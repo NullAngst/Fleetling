@@ -1,0 +1,6 @@
+.git
+.github
+web/src/node_modules
+web/static/dist
+/fleetling
+/dist
