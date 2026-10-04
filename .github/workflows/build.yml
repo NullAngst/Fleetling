@@ -1,0 +1,93 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Build web assets
+        working-directory: web/src
+        run: npm ci && npm run build
+      - name: Module files
+        run: |
+          if [ -f go.sum ]; then
+            go mod verify
+          else
+            echo "::warning::go.sum is missing. Run the deps workflow once to commit it."
+            go mod tidy
+          fi
+      - run: go vet ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - run: go test -race ./...
+
+  # Same engine API the server talks to. The runner's own Docker daemon is
+  # used instead of docker:dind, since it is a real engine with nothing extra
+  # to set up.
+  integration-docker:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - name: Module files
+        run: if [ ! -f go.sum ]; then go mod tidy; fi
+      - name: Start a labeled container
+        run: >
+          docker run -d --name fl-it
+          --label com.docker.compose.project=fltest
+          --label com.docker.compose.service=web
+          --label com.docker.compose.project.working_dir=/opt/fltest
+          alpine:latest sleep 300
+      - name: Integration tests
+        env:
+          FLEETLING_IT_HOST: /var/run/docker.sock
+        run: go test -tags integration -count=1 -v ./internal/engine/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, integration-docker]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Build web assets
+        working-directory: web/src
+        run: npm ci && npm run build
+      - name: Module files
+        run: if [ ! -f go.sum ]; then go mod tidy; fi
+      - name: Build static binaries
+        run: |
+          mkdir dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o dist/fleetling-linux-$arch ./cmd/fleetling
+          done
+          cd dist && sha256sum fleetling-* > SHA256SUMS
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
