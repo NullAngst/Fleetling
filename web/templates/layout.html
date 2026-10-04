@@ -1,0 +1,36 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
+<title>{{.Title}} - Fleetling</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/dist/app.js" defer></script>
+</head>
+<body class="{{if .Authed}}app{{else}}bare{{end}}">
+{{if .Authed}}
+<nav class="sidebar">
+  <div class="brand">Fleetling</div>
+  <ul>
+    <li><a href="/" {{if eq .Active "stacks"}}aria-current="page"{{end}}>Stacks</a></li>
+    <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a></li>
+  </ul>
+  <div class="sidebar-foot">
+    <button type="button" class="link" data-theme-toggle>Theme</button>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link">Log out</button>
+    </form>
+    <span class="mono muted">{{.Version}}</span>
+  </div>
+</nav>
+{{end}}
+<main>
+  {{if .Error}}<div class="msg msg-error" role="alert">{{.Error}}</div>{{end}}
+  {{if .Notice}}<div class="msg msg-notice">{{.Notice}}</div>{{end}}
+  {{template "content" .}}
+</main>
+</body>
+</html>{{end}}

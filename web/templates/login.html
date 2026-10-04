@@ -1,0 +1,12 @@
+{{define "content"}}
+<section class="narrow">
+  <h1>Fleetling</h1>
+  <form method="post" action="/login" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" required autofocus>
+    </label>
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</section>
+{{end}}

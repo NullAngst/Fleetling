@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Change stack root</h1>
+<p>From <span class="mono">{{.Data.OldRoot}}</span> to <span class="mono">{{.Data.Form.Root}}</span>. Nothing is moved.</p>
+{{if .Data.Moving}}
+<p>These stacks are under the old root. After saving they show as External until their folders exist under the new root:</p>
+<ul class="mono">{{range .Data.Moving}}<li>{{.Dir}}</li>{{end}}</ul>
+{{else}}
+<p class="muted">No stack folders were found under the old root.</p>
+{{end}}
+<form method="post" action="/settings" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="root" value="{{.Data.Form.Root}}">
+  <input type="hidden" name="docker_host" value="{{.Data.Form.DockerHost}}">
+  <input type="hidden" name="podman_host" value="{{.Data.Form.PodmanHost}}">
+  <input type="hidden" name="ignore" value="{{.Data.Form.Ignore}}">
+  <input type="hidden" name="confirm_root" value="yes">
+  <div class="actions">
+    <button type="submit" class="danger">Change root</button>
+    <a href="/settings">Cancel</a>
+  </div>
+</form>
+{{end}}

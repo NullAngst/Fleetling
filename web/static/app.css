@@ -1,0 +1,121 @@
+/* Fleetling: a quiet admin tool. Neutral grays, one accent, 1px borders. */
+
+:root {
+  --bg: #ffffff;
+  --bg-alt: #f4f4f5;
+  --fg: #18181b;
+  --muted: #6b6b74;
+  --border: #d4d4d8;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --ok: #15803d;
+  --warn: #a16207;
+  --bad: #b91c1c;
+  --off: #a1a1aa;
+  --radius: 4px;
+  --row: 32px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --mono: ui-monospace, "SFMono-Regular", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #18181b; --bg-alt: #232327; --fg: #e4e4e7; --muted: #a1a1aa;
+    --border: #3f3f46; --accent: #60a5fa; --accent-fg: #0b1220;
+    --ok: #4ade80; --warn: #facc15; --bad: #f87171; --off: #71717a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #18181b; --bg-alt: #232327; --fg: #e4e4e7; --muted: #a1a1aa;
+  --border: #3f3f46; --accent: #60a5fa; --accent-fg: #0b1220;
+  --ok: #4ade80; --warn: #facc15; --bad: #f87171; --off: #71717a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); }
+a { color: var(--accent); }
+h1 { font-size: 18px; margin: 0 0 12px; }
+h2 { font-size: 15px; margin: 20px 0 8px; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+.muted { color: var(--muted); }
+small { display: block; color: var(--muted); margin-top: 2px; }
+
+/* Layout */
+body.app { display: grid; grid-template-columns: 180px 1fr; min-height: 100vh; }
+.sidebar { border-right: 1px solid var(--border); background: var(--bg-alt); padding: 12px; display: flex; flex-direction: column; }
+.sidebar .brand { font-weight: 600; margin-bottom: 12px; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li a { display: block; padding: 4px 8px; border-radius: var(--radius); color: var(--fg); text-decoration: none; }
+.sidebar li a:hover { background: var(--bg); }
+.sidebar li a[aria-current="page"] { background: var(--bg); border: 1px solid var(--border); }
+.sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+main { padding: 16px 20px; min-width: 0; }
+body.bare main { max-width: 440px; margin: 10vh auto 0; }
+.narrow { max-width: 440px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Messages stay on the page until the user moves on. No toasts. */
+.msg { border: 1px solid var(--border); border-left-width: 4px; border-radius: var(--radius); padding: 8px 10px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.msg::first-letter { text-transform: uppercase; }
+.msg-error { border-left-color: var(--bad); }
+.msg-notice { border-left-color: var(--accent); }
+.warn { color: var(--warn); font-size: 12px; }
+.engine-line { margin: 4px 0; }
+
+/* Status: always a dot and a word, never color alone. */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--off); }
+.dot-ok, .dot-running { background: var(--ok); }
+.dot-partial { background: var(--warn); }
+.dot-stopped { background: var(--bad); }
+.dot-ondisk { background: transparent; border: 1px solid var(--muted); }
+.dot-external { background: transparent; border: 1px dashed var(--muted); }
+
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+table.list { border-collapse: collapse; width: 100%; }
+table.list th, table.list td { text-align: left; padding: 0 10px; height: var(--row); border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.list td { padding-top: 4px; padding-bottom: 4px; }
+table.list thead th { position: sticky; top: 0; background: var(--bg-alt); font-weight: 600; user-select: none; }
+table.list th[data-sort] { cursor: pointer; }
+table.list th[aria-sort="ascending"]::after { content: " \2191"; }
+table.list th[aria-sort="descending"]::after { content: " \2193"; }
+table.list tbody tr:hover { background: var(--bg-alt); }
+table.list tbody tr:last-child td { border-bottom: 0; }
+
+/* Forms */
+.form { display: flex; flex-direction: column; gap: 10px; max-width: 440px; margin-bottom: 24px; }
+.form.wide { max-width: 640px; }
+label { display: flex; flex-direction: column; gap: 4px; }
+input, textarea, select, button { font: inherit; color: inherit; }
+input, textarea, select { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; }
+input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button { background: var(--bg-alt); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 12px; cursor: pointer; align-self: flex-start; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); }
+.field-row { display: flex; gap: 8px; align-items: flex-end; }
+.field-row label { flex: 1; }
+.test-out { min-height: 1em; font-size: 13px; }
+.actions { display: flex; gap: 12px; align-items: center; }
+.search { width: 220px; }
+
+/* Phone: sidebar becomes a top bar, table rows stack. */
+@media (max-width: 720px) {
+  body.app { grid-template-columns: 1fr; }
+  .sidebar { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 12px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar .brand { margin: 0; }
+  .sidebar ul { display: flex; gap: 4px; }
+  .sidebar-foot { margin: 0 0 0 auto; flex-direction: row; align-items: center; }
+  main { padding: 12px; }
+  .search { width: 100%; }
+  .page-head { flex-wrap: wrap; }
+  table.list thead { display: none; }
+  table.list, table.list tbody, table.list tr, table.list td { display: block; width: 100%; }
+  table.list tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  table.list td { border: 0; height: auto; padding: 2px 10px; }
+  table.list td::before { content: attr(data-label); display: inline-block; width: 80px; color: var(--muted); font-family: var(--font); }
+}

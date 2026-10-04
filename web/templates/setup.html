@@ -1,0 +1,23 @@
+{{define "content"}}
+<section class="narrow">
+  <h1>First run</h1>
+  <p>Set the admin password and the folder your stacks live in. The setup token is printed in the container log: <code>docker logs fleetling</code>.</p>
+  <form method="post" action="/setup" class="form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label>Setup token
+      <input name="token" class="mono" autocomplete="off" required autofocus>
+    </label>
+    <label>Password, at least 12 characters
+      <input type="password" name="password" minlength="12" autocomplete="new-password" required>
+    </label>
+    <label>Password again
+      <input type="password" name="confirm" minlength="12" autocomplete="new-password" required>
+    </label>
+    <label>Stack root
+      <input name="root" class="mono" value="{{.Data.Root}}" required>
+      <small>Every stack gets a folder in here. It has to be mounted at the same path inside and outside the container, like <code>- /opt:/opt</code>.</small>
+    </label>
+    <button type="submit" class="primary">Save and log in</button>
+  </form>
+</section>
+{{end}}

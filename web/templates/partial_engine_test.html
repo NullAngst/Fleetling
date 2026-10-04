@@ -1,0 +1,1 @@
+{{if .Err}}<span class="dot dot-stopped"></span><span class="mono">{{.Slot}}: {{.Err}}</span>{{else}}<span class="dot dot-ok"></span>{{.Info.Kind}} {{.Info.Version}}, API {{.Info.APIVersion}}, <span class="mono">{{.Info.OS}}/{{.Info.Arch}}</span>{{if .Info.Platform}} ({{.Info.Platform}}){{end}}{{if .Note}}<div class="warn">{{.Note}}</div>{{end}}{{end}}

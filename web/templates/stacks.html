@@ -1,0 +1,46 @@
+{{define "content"}}
+<header class="page-head">
+  <h1>Stacks</h1>
+  <input type="search" class="search" placeholder="Search  /" data-filter="#stacks" aria-label="Search stacks">
+</header>
+<p class="muted">
+  <span class="mono">{{.Data.Root}}</span>.
+  {{.Data.Managed}} managed, {{.Data.OnDisk}} on disk, {{.Data.External}} external. Read only for now.
+</p>
+{{range .Data.Engines}}
+  {{if .Up}}<p class="engine-line"><span class="dot dot-ok"></span>{{.Slot}} <span class="mono muted">{{.Host}}</span>, {{.Containers}} Compose containers</p>
+  {{else if .Missing}}<p class="engine-line muted"><span class="dot dot-off"></span>{{.Slot}}: no socket at <span class="mono">{{.Host}}</span></p>
+  {{else}}<div class="msg msg-error"><strong>{{.Slot}}</strong> did not answer at <span class="mono">{{.Host}}</span>: <span class="mono">{{.Err}}</span></div>{{end}}
+{{end}}
+{{if .Data.ScanErr}}<div class="msg msg-error">Could not read the stack root: <span class="mono">{{.Data.ScanErr}}</span></div>{{end}}
+
+<div class="table-wrap">
+<table id="stacks" class="list">
+  <thead>
+    <tr>
+      <th data-sort="text">Project</th>
+      <th data-sort="text">Status</th>
+      <th data-sort="num">Services</th>
+      <th data-sort="text">Engine</th>
+      <th data-sort="text">Folder</th>
+    </tr>
+  </thead>
+  <tbody>
+  {{range .Data.Stacks}}
+    <tr>
+      <td data-label="Project">
+        <span class="mono">{{.Project}}</span>
+        {{range .Warnings}}<div class="warn">{{.}}</div>{{end}}
+      </td>
+      <td data-label="Status"><span class="dot dot-{{if eq .Kind "managed"}}{{.State}}{{else}}{{.Kind}}{{end}}"></span>{{.Label}}</td>
+      <td data-label="Services" data-value="{{.Running}}" class="mono">{{.Running}}/{{.Total}}</td>
+      <td data-label="Engine">{{if .Engine}}{{.Engine}}{{else}}<span class="muted">none yet</span>{{end}}</td>
+      <td data-label="Folder" class="mono">{{.Dir}}{{if .ComposeFile}}<span class="muted">/{{.ComposeFile}}</span>{{end}}</td>
+    </tr>
+  {{else}}
+    <tr><td colspan="5" class="muted">No stacks found under {{$.Data.Root}} and nothing running with Compose labels.</td></tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

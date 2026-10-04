@@ -1,0 +1,14 @@
+{
+  "name": "fleetling-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild main.js --bundle --minify --format=iife --target=es2022 --outfile=../static/dist/app.js"
+  },
+  "dependencies": {
+    "htmx.org": "^2.0.11"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

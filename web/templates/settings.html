@@ -1,0 +1,50 @@
+{{define "content"}}
+<h1>Settings</h1>
+<form method="post" action="/settings" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Stack root</h2>
+  <label>Folder
+    <input name="root" class="mono" value="{{.Data.Root}}" required>
+    <small>Must be mounted at the identical path inside the container. Changing it moves nothing: stacks under the old root show as External. App data stays at <span class="mono">{{.Data.DataDir}}</span>, set by FLEETLING_DATA.</small>
+  </label>
+  <label>Ignored folders, one per line
+    <textarea name="ignore" rows="3" class="mono">{{.Data.Ignore}}</textarea>
+    <small>Folder names under the root that are never treated as stacks.</small>
+  </label>
+
+  <h2>Engines</h2>
+  <p class="muted">Both are optional, at least one has to answer. Leave a field empty to turn that engine off. Unix sockets only.</p>
+  <div class="field-row">
+    <label>Docker socket
+      <input id="docker_host" name="docker_host" class="mono" value="{{.Data.DockerHost}}" placeholder="{{.Data.DefaultDocker}}">
+    </label>
+    <button type="button" hx-post="/settings/test" hx-include="#docker_host" hx-vals='{"slot":"docker"}' hx-target="#test-docker">Test</button>
+  </div>
+  <div id="test-docker" class="test-out"></div>
+  <div class="field-row">
+    <label>Podman socket, rootful
+      <input id="podman_host" name="podman_host" class="mono" value="{{.Data.PodmanHost}}" placeholder="{{.Data.DefaultPodman}}">
+    </label>
+    <button type="button" hx-post="/settings/test" hx-include="#podman_host" hx-vals='{"slot":"podman"}' hx-target="#test-podman">Test</button>
+  </div>
+  <div id="test-podman" class="test-out"></div>
+
+  <button type="submit" class="primary">Save settings</button>
+</form>
+
+<form method="post" action="/settings/password" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Password</h2>
+  <label>Current password <input type="password" name="current" autocomplete="current-password" required></label>
+  <label>New password, at least 12 characters <input type="password" name="password" minlength="12" autocomplete="new-password" required></label>
+  <label>New password again <input type="password" name="confirm" minlength="12" autocomplete="new-password" required></label>
+  <button type="submit">Change password</button>
+</form>
+
+<form method="post" action="/settings/logout-all" class="form wide" data-confirm="Log out every browser, including this one?">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Sessions</h2>
+  <p class="muted">Replaces the session secret. Every browser has to log in again.</p>
+  <button type="submit">Log out everywhere</button>
+</form>
+{{end}}

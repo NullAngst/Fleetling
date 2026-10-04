@@ -1,0 +1,14 @@
+services:
+  fleetling:
+    build: https://github.com/NullAngst/Fleetling.git#main
+    image: fleetling:local
+    container_name: fleetling
+    restart: unless-stopped
+    ports:
+      - "8420:8420"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt:/opt
+    environment:
+      - FLEETLING_ROOT=/opt
+      - FLEETLING_DATA=/opt/fleetling/data
