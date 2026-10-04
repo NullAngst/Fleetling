@@ -1,0 +1,46 @@
+name: deps
+
+# Weekly: move every Go module and npm package to its newest release,
+# rebuild the image against the newest base images, and open a PR.
+# Run it by hand once after the first push to commit go.sum.
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Go modules
+        run: go get -u ./... && go mod tidy
+      - name: npm packages
+        working-directory: web/src
+        run: npx --yes npm-check-updates -u && npm install && npm run build
+      # PRs opened with the built-in token do not trigger other workflows,
+      # so the checks run here before the PR exists.
+      - run: go vet ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - run: go test -race ./...
+      - name: Image builds against the newest base images
+        run: docker build --pull -t fleetling:deps-check .
+      - uses: peter-evans/create-pull-request@v8
+        with:
+          branch: deps/weekly
+          delete-branch: true
+          commit-message: "Update dependencies"
+          title: "Weekly dependency update"
+          body: |
+            Automated update: `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`.
+            vet, staticcheck, the race tests and an image build with `--pull` all passed in the deps run before this PR was opened.
