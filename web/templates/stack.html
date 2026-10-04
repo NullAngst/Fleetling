@@ -1,0 +1,77 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="stack-head">
+  <h1 class="mono">{{$d.Stack.Project}}</h1>
+  <span><span class="dot dot-{{if eq $d.Stack.Kind "managed"}}{{$d.Stack.State}}{{else}}{{$d.Stack.Kind}}{{end}}"></span>{{$d.Stack.Label}}</span>
+  <span class="mono">{{$d.Stack.Running}}/{{$d.Stack.Total}}</span>
+  <span>{{if $d.Stack.Engine}}{{$d.Stack.Engine}}{{else}}<span class="muted">no engine yet</span>{{end}}</span>
+  <span class="mono muted">{{$d.Folder.Dir}}/{{$d.Folder.ComposeFile}}</span>
+</header>
+{{range $d.Stack.Warnings}}<div class="warn">{{.}}</div>{{end}}
+{{if $d.FolderMounted}}<p class="notice-line">{{join $d.FolderMounted ", "}} mounts the stack folder itself, so the container can read .env and edit the compose file. For new stacks, a subfolder like <span class="mono">{{$d.Folder.Dir}}/cfg</span> avoids that.</p>{{end}}
+
+<div class="action-bar">
+{{if $d.Self}}
+  <span class="muted">This is Fleetling's own stack. Compose actions on it arrive with self-management; until then, update it from the host.</span>
+  <a class="button" href="/stacks/{{$d.Folder.Name}}/edit">Edit</a>
+{{else if not $d.Folder.Meta}}
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/manage">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary">Manage</button>
+  </form>
+  <span class="muted">Writes {{$d.Folder.Dir}}/.fleetling.toml with project <span class="mono">{{$d.Folder.Project}}</span>. Nothing else changes.</span>
+  {{if $d.Folder.ComposeFile}}<a class="button" href="/stacks/{{$d.Folder.Name}}/edit">Edit</a>{{end}}
+{{else}}
+  {{range $d.Actions}}
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/action/{{.Key}}">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$d.Stack.Project}}?"{{if .Danger}} data-danger{{end}}>{{.Label}}</button>
+  </form>
+  {{end}}
+  {{if $d.Folder.ComposeFile}}<a class="button" href="/stacks/{{$d.Folder.Name}}/edit">Edit</a>{{end}}
+  {{if $d.TargetErr}}<span class="warn">{{$d.TargetErr}}</span>{{end}}
+{{end}}
+</div>
+
+{{if $d.JobID}}
+<section class="job" data-job="{{$d.JobID}}">
+  <div class="job-head"><strong>Output</strong> <span class="job-status muted">Connecting...</span></div>
+  <pre class="job-out mono"></pre>
+</section>
+{{end}}
+
+<nav class="tabs">
+  <a href="?tab=compose" {{if eq $d.Tab "compose"}}aria-current="page"{{end}}>Compose</a>
+  <a href="?tab=env" {{if eq $d.Tab "env"}}aria-current="page"{{end}}>Env</a>
+  <a href="?tab=services" {{if eq $d.Tab "services"}}aria-current="page"{{end}}>Services</a>
+  <a href="?tab=history" {{if eq $d.Tab "history"}}aria-current="page"{{end}}>History</a>
+</nav>
+
+{{if eq $d.Tab "compose"}}
+<pre class="code mono">{{$d.Compose}}</pre>
+{{else if eq $d.Tab "env"}}
+  {{if $d.HasEnv}}
+  <pre class="code mono">{{range $d.Env}}{{if .IsVar}}{{.Key}}={{if .Secret}}<span class="secret" tabindex="0" title="Click to show">{{.Value}}</span>{{else}}{{.Value}}{{end}}{{else}}{{.Raw}}{{end}}
+{{end}}</pre>
+  <p class="muted">Values for keys containing PASS, SECRET, TOKEN or KEY are blurred until clicked.</p>
+  {{else}}<p class="muted">No .env file.</p>{{end}}
+{{else if eq $d.Tab "services"}}
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Service</th><th>Containers running</th><th>In compose file</th></tr></thead>
+  <tbody>
+  {{range $d.Services}}
+    <tr>
+      <td data-label="Service" class="mono">{{.Name}}</td>
+      <td data-label="Running" class="mono">{{.Running}}/{{.Total}}</td>
+      <td data-label="In file">{{if .Declared}}yes{{else}}<span class="warn">no, orphan</span>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="3" class="muted">No services.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{else}}
+  {{template "action_rows" $d.Recent}}
+  <p><a href="/actions?target={{$d.Folder.Name}}">Full history</a></p>
+{{end}}
+{{end}}

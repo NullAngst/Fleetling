@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 )
 
 func TestOpenMigratesAndLocksDownFile(t *testing.T) {
@@ -119,5 +120,37 @@ func TestParseList(t *testing.T) {
 	want := []string{"containerd", "backups", "tmp"}
 	if !slices.Equal(got, want) {
 		t.Errorf("ParseList = %q, want %q", got, want)
+	}
+}
+
+func TestActionLog(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "fleetling.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	old := time.Now().Add(-100 * 24 * time.Hour)
+	if _, err := s.StartAction(ctx, Action{Started: old, Target: "old", Command: "docker compose up -d"}); err != nil {
+		t.Fatal(err)
+	}
+	id, err := s.StartAction(ctx, Action{Started: time.Now(), Target: "test-stack", Engine: "docker", Command: "docker compose -p test-stack up -d"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.ListActions(ctx, "test-stack", 10, 0)
+	if err != nil || len(list) != 1 || list[0].ExitCode != nil {
+		t.Fatalf("running entry: %+v %v", list, err)
+	}
+	if err := s.FinishAction(ctx, id, time.Now(), 0, "Container test-stack-web-1  Started"); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.ListActions(ctx, "", 10, 0)
+	if len(list) != 2 || list[0].Target != "test-stack" || list[0].ExitCode == nil || *list[0].ExitCode != 0 || list[0].Output == "" {
+		t.Fatalf("after finish: %+v", list)
+	}
+	n, err := s.PruneActions(ctx, time.Now().Add(-ActionRetention))
+	if err != nil || n != 1 {
+		t.Fatalf("prune removed %d, %v", n, err)
 	}
 }

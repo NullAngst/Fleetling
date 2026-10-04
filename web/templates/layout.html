@@ -4,10 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf-token" content="{{.CSRF}}">
+<meta name="csp-nonce" content="{{.Nonce}}">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
 <title>{{.Title}} - Fleetling</title>
 <link rel="stylesheet" href="/static/app.css">
-<script src="/static/dist/app.js" defer></script>
+<script src="/static/dist/main.js" defer></script>
+{{if .Editor}}<script src="/static/dist/editor.js" defer></script>{{end}}
 </head>
 <body class="{{if .Authed}}app{{else}}bare{{end}}">
 {{if .Authed}}
@@ -15,6 +17,7 @@
   <div class="brand">Fleetling</div>
   <ul>
     <li><a href="/" {{if eq .Active "stacks"}}aria-current="page"{{end}}>Stacks</a></li>
+    <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>Action log</a></li>
     <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a></li>
   </ul>
   <div class="sidebar-foot">
@@ -32,5 +35,15 @@
   {{if .Notice}}<div class="msg msg-notice">{{.Notice}}</div>{{end}}
   {{template "content" .}}
 </main>
+<dialog id="confirm-dialog">
+  <form method="dialog">
+    <p data-confirm-title></p>
+    <p class="mono cmd" data-confirm-command></p>
+    <div class="actions">
+      <button value="ok" class="primary" data-confirm-ok>Run</button>
+      <button value="cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
 </body>
 </html>{{end}}

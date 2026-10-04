@@ -6,14 +6,16 @@ It replaces the parts of Portainer CE that actually get used: stacks, containers
 
 ## Status
 
-This is phase 1 of 11. What works right now:
+This is phase 2 of 11. What works right now:
 
-- First-run setup: admin password and stack root.
-- Login, sessions, "log out everywhere", password change.
+- First-run setup, login, sessions, "log out everywhere", password change.
 - Settings: stack root, ignored folders, Docker and Podman endpoints with a Test button.
-- A read-only stack list. Every folder under the root with a compose file shows up, along with every running Compose project the engines report.
+- The stack list: every folder under the root with a compose file, plus every running Compose project the engines report.
+- Stacks: create, edit with a side-by-side diff, Deploy, Update, Restart, Recreate, Start, Stop and Down, each with live output in the browser.
+- Manage: one click turns an On disk folder into a managed stack.
+- The action log: every command Fleetling ran and every file it wrote, kept for 90 days.
 
-It changes nothing on your server yet. Deploy, stop, edit and the rest arrive in phase 2. The full plan is in the build spec.
+Containers, logs and the web shell arrive in phase 3. The full plan is in the build spec.
 
 ## Prerequisites
 
@@ -113,6 +115,37 @@ docker compose build --pull && docker compose up -d
 
 Everything else is set in the UI. The database holds settings only. Stack state lives in the stack folders and in the engines, and Fleetling rediscovers it on every page load.
 
+## Working with stacks
+
+Every action runs the real Compose binary against the stack's folder, like this:
+
+```
+DOCKER_HOST=unix:///var/run/docker.sock \
+  docker compose -p gitea --project-directory /opt/gitea -f /opt/gitea/compose.yaml --ansi never --progress plain up -d
+```
+
+The confirm dialog shows that exact line before anything runs. Output streams to the page while it runs, and the exit code plus the last 200 lines land in the action log. One action per stack at a time.
+
+| Button | Runs |
+| --- | --- |
+| Deploy | `up -d` |
+| Update | `pull`, then `up -d` |
+| Restart | `restart` |
+| Recreate | `up -d --force-recreate` |
+| Start, Stop | `start`, `stop` |
+| Down | `down` |
+| Save and redeploy | `up -d --remove-orphans` |
+
+A few things worth knowing:
+
+- Your compose file is saved byte for byte, comments and all. Fleetling never adds labels, `x-` keys or a `name:`. The project name lives in `.fleetling.toml` and goes to Compose with `-p`. Browsers send CRLF line endings from text boxes; those are turned back into LF unless the file already used CRLF.
+- Saving runs `docker compose config -q` first and refuses a file Compose rejects. Tick "Save anyway" to keep a half-finished file.
+- `.env` is saved at mode 600. On the Env tab, values for keys containing PASS, SECRET, TOKEN or KEY are blurred until you click them. If `.env` is a symlink to another file in the stack folder, the edit goes to that file and the link stays.
+- Files written into an existing folder keep that folder's owner. `/opt/jellyfin` stays owned by whoever owned it.
+- On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what the "remove with folders" option in phase 6 cleans up.
+- If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. The container can read `.env` and edit the compose file. Most apps never touch them, so it's a heads-up, not a block.
+- Fleetling's own stack can be edited but not deployed, stopped or restarted from inside. The process would die halfway through. Self-updates arrive in phase 7; until then, update it from the host.
+
 ## How stacks are listed
 
 Fleetling scans the direct children of the root for `compose.yaml`, `compose.yml`, `docker-compose.yml` or `docker-compose.yaml`, in the order Compose itself picks them. Hidden folders, symlinks and names on the ignore list (`containerd` by default) are skipped.
@@ -120,13 +153,15 @@ Fleetling scans the direct children of the root for `compose.yaml`, `compose.yml
 | Status | Meaning |
 | --- | --- |
 | Running, Partial, Stopped | A managed stack with a `.fleetling.toml`, and how many of its services are up |
-| On disk | A folder with a compose file and no `.fleetling.toml` yet. "Manage" arrives in phase 2 |
+| On disk | A folder with a compose file and no `.fleetling.toml` yet. Open it and click Manage |
 | External | A running Compose project with no folder under the root, Portainer's stacks for example |
 | Unknown | The stack's engine didn't answer |
 
 A folder is matched to running containers by the `com.docker.compose.project.working_dir` label first, then by project name. Its project name comes from `.fleetling.toml`, then `COMPOSE_PROJECT_NAME` in `.env`, then a top-level `name:`, then the folder name, same as Compose.
 
-One thing to know now: if a folder has a `compose.override.yaml`, Fleetling flags it. Fleetling runs Compose with `-f compose.yaml`, which means the override file is not applied.
+Manage writes `.fleetling.toml` and nothing else. It takes the project name and engine from whatever is already running in that folder, so the containers are picked up as they are, with no restart.
+
+If a folder has a `compose.override.yaml`, Fleetling flags it. Fleetling runs Compose with `-f <file>`, which means the override file is not applied. Merge it into the main file before managing the stack.
 
 ## Building from source
 

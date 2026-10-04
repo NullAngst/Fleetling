@@ -1,11 +1,14 @@
 {{define "content"}}
 <header class="page-head">
   <h1>Stacks</h1>
+  <div class="actions">
+  <a class="button" href="/stacks/new">New stack</a>
   <input type="search" class="search" placeholder="Search  /" data-filter="#stacks" aria-label="Search stacks">
+  </div>
 </header>
 <p class="muted">
   <span class="mono">{{.Data.Root}}</span>.
-  {{.Data.Managed}} managed, {{.Data.OnDisk}} on disk, {{.Data.External}} external. Read only for now.
+  {{.Data.Managed}} managed, {{.Data.OnDisk}} on disk, {{.Data.External}} external.
 </p>
 {{range .Data.Engines}}
   {{if .Up}}<p class="engine-line"><span class="dot dot-ok"></span>{{.Slot}} <span class="mono muted">{{.Host}}</span>, {{.Containers}} Compose containers</p>
@@ -29,7 +32,7 @@
   {{range .Data.Stacks}}
     <tr>
       <td data-label="Project">
-        <span class="mono">{{.Project}}</span>
+        {{if .Folder}}<a class="mono" href="/stacks/{{.Folder}}">{{.Project}}</a>{{else}}<span class="mono">{{.Project}}</span>{{end}}
         {{range .Warnings}}<div class="warn">{{.}}</div>{{end}}
       </td>
       <td data-label="Status"><span class="dot dot-{{if eq .Kind "managed"}}{{.State}}{{else}}{{.Kind}}{{end}}"></span>{{.Label}}</td>

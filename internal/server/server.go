@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,7 @@ type Config struct {
 	Version        string
 	TrustedProxies []netip.Prefix
 	Logger         *slog.Logger
+	DockerBin      string // docker CLI to run, "docker" from PATH by default
 }
 
 // Engine is the part of engine.Client the server uses. Tests swap in a fake.
@@ -37,6 +39,7 @@ type Engine interface {
 	Identify(ctx context.Context) (engine.Info, error)
 	ComposeContainers(ctx context.Context, slot string) ([]compose.Container, error)
 	ContainerMounts(ctx context.Context, id string) ([]compose.Mount, error)
+	ContainerLabels(ctx context.Context, id string) (map[string]string, error)
 	Close() error
 }
 
@@ -48,6 +51,9 @@ type Server struct {
 	tmpl    map[string]*template.Template
 	limiter *auth.Limiter
 	handler http.Handler
+	runner  compose.Runner
+	jobs    *compose.Jobs
+	base    context.Context // ends at shutdown; running actions use it
 
 	// Hooks, replaced in tests.
 	newEngine   func(endpoint string) (Engine, error)
@@ -82,6 +88,9 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 		inContainer: engine.InContainer,
 		selfIDs:     engine.SelfIDCandidates,
 		now:         time.Now,
+		runner:      compose.Runner{Docker: cfg.DockerBin},
+		jobs:        compose.NewJobs(ctx),
+		base:        ctx,
 	}
 
 	secretHex, ok, err := st.Get(ctx, store.KeySessionSecret)
@@ -104,7 +113,29 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 		s.setupToken = hex.EncodeToString(randomBytes(12))
 	}
 	s.handler = s.routes()
+	go s.pruneLoop()
 	return s, nil
+}
+
+// pruneLoop trims the action log to its retention once at startup and then
+// daily.
+func (s *Server) pruneLoop() {
+	t := time.NewTicker(24 * time.Hour)
+	defer t.Stop()
+	for {
+		if n, err := s.store.PruneActions(s.base, s.now().Add(-store.ActionRetention)); err != nil {
+			if s.base.Err() == nil {
+				s.log.Error("prune action log", "err", err)
+			}
+		} else if n > 0 {
+			s.log.Info("pruned action log", "removed", n)
+		}
+		select {
+		case <-t.C:
+		case <-s.base.Done():
+			return
+		}
+	}
 }
 
 // SetupToken is the one-time first-run token, or "" once a password exists.
@@ -133,6 +164,15 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /logout", s.requireAuth(s.logout))
 
 	mux.HandleFunc("GET /{$}", s.requireAuth(s.stacksPage))
+	mux.HandleFunc("GET /stacks/new", s.requireAuth(s.newStackForm))
+	mux.HandleFunc("POST /stacks/new", s.requireAuth(s.newStackSubmit))
+	mux.HandleFunc("GET /stacks/{folder}", s.requireAuth(s.stackPage))
+	mux.HandleFunc("GET /stacks/{folder}/edit", s.requireAuth(s.editForm))
+	mux.HandleFunc("POST /stacks/{folder}/edit", s.requireAuth(s.editSubmit))
+	mux.HandleFunc("POST /stacks/{folder}/manage", s.requireAuth(s.manageStack))
+	mux.HandleFunc("POST /stacks/{folder}/action/{action}", s.requireAuth(s.stackAction))
+	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
+	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))
 	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
 	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
 	mux.HandleFunc("POST /settings/test", s.requireAuth(s.engineTest))
@@ -157,12 +197,23 @@ func staticHandler(fsys fs.FS) http.Handler {
 	})
 }
 
-// securityHeaders sets a strict CSP: no inline script, no inline style, no
-// framing. Everything the UI needs is served from /static.
+type nonceKey struct{}
+
+// nonceFrom returns the per-request CSP nonce.
+func nonceFrom(r *http.Request) string {
+	n, _ := r.Context().Value(nonceKey{}).(string)
+	return n
+}
+
+// securityHeaders sets a strict CSP: no inline script, no framing, and no
+// inline style except <style> elements carrying this response's nonce,
+// which is how CodeMirror injects its base styles.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nonce := b64.EncodeToString(randomBytes(16))
+		r = r.WithContext(context.WithValue(r.Context(), nonceKey{}, nonce))
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'nonce-"+nonce+"'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Frame-Options", "DENY")
@@ -259,6 +310,10 @@ func (s *Server) ensurePreauth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) requireAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.authed(r) {
+			if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+				http.Error(w, "not logged in", http.StatusUnauthorized)
+				return
+			}
 			if r.Header.Get("HX-Request") == "true" {
 				w.Header().Set("HX-Redirect", "/login")
 				w.WriteHeader(http.StatusUnauthorized)

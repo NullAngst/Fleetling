@@ -1,0 +1,12 @@
+{{define "editors"}}
+{{if .ValidationErr}}<pre class="msg msg-error mono">{{.ValidationErr}}</pre>{{end}}
+<label>compose.yaml
+<textarea name="compose" rows="22" class="mono" data-editor="yaml" spellcheck="false">
+{{.Compose}}</textarea>
+</label>
+<label>.env
+<textarea name="env" rows="6" class="mono" data-editor="env" spellcheck="false">
+{{.Env}}</textarea>
+<small>Optional. Saved at mode 600. Compose reads it for ${VARIABLE} interpolation.</small>
+</label>
+{{end}}

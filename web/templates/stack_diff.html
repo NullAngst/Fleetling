@@ -1,0 +1,40 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Review <span class="mono">{{$d.Folder.Name}}</span></h1>
+{{if $d.ValidationErr}}<div class="msg msg-error">docker compose config rejected the new file:<pre class="mono">{{$d.ValidationErr}}</pre></div>{{end}}
+{{if not $d.Changed}}<p class="muted">No changes.</p>{{end}}
+
+<h2 class="mono">{{$d.Folder.ComposeFile}}</h2>
+{{if $d.DiffOK}}{{template "diff" $d.Rows}}{{else}}<p class="muted">Too large to diff. The new text is below.</p><pre class="code mono">{{$d.Compose}}</pre>{{end}}
+<h2 class="mono">.env</h2>
+{{template "diff" $d.EnvRows}}
+
+<form method="post" action="/stacks/{{$d.Folder.Name}}/edit" class="form editor-form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="hash" value="{{$d.Hash}}">
+  <input type="hidden" name="compose" value="{{$d.Compose}}">
+  <input type="hidden" name="env" value="{{$d.Env}}">
+  {{if $d.ValidationErr}}<label class="check"><input type="checkbox" name="force" value="1"> Save anyway, it is half-finished</label>{{end}}
+  <div class="actions">
+    <button type="submit" name="step" value="save" class="primary">Save</button>
+    {{if $d.CanRedeploy}}<button type="submit" name="step" value="save_deploy">Save and redeploy</button>{{end}}
+    <a href="/stacks/{{$d.Folder.Name}}/edit">Back to the editor</a>
+  </div>
+  {{if $d.CanRedeploy}}<p class="muted">Save and redeploy runs <span class="mono">docker compose ... up -d --remove-orphans</span>.</p>{{end}}
+</form>
+{{end}}
+
+{{define "diff"}}
+<div class="table-wrap">
+<table class="diff mono">
+  <tbody>
+  {{range .}}
+  <tr class="d-{{.Kind}}">
+    <td class="ln">{{if .LeftNo}}{{.LeftNo}}{{end}}</td><td class="l">{{.Left}}</td>
+    <td class="ln">{{if .RightNo}}{{.RightNo}}{{end}}</td><td class="r">{{.Right}}</td>
+  </tr>
+  {{else}}<tr><td class="muted">Empty.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

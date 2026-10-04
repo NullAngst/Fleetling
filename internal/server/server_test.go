@@ -30,6 +30,7 @@ type fakeEngine struct {
 	info       engine.Info
 	containers []compose.Container
 	mounts     []compose.Mount
+	labels     map[string]string
 	err        error
 }
 
@@ -48,14 +49,18 @@ func (f *fakeEngine) ComposeContainers(_ context.Context, slot string) ([]compos
 func (f *fakeEngine) ContainerMounts(context.Context, string) ([]compose.Mount, error) {
 	return f.mounts, f.err
 }
+func (f *fakeEngine) ContainerLabels(context.Context, string) (map[string]string, error) {
+	return f.labels, f.err
+}
 func (f *fakeEngine) Close() error { return nil }
 
 type harness struct {
-	t       *testing.T
-	s       *Server
-	root    string
-	engines map[string]*fakeEngine
-	inCtr   bool
+	t         *testing.T
+	s         *Server
+	root      string
+	engines   map[string]*fakeEngine
+	inCtr     bool
+	dockerLog string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -86,6 +91,13 @@ func newHarness(t *testing.T) *harness {
 		return &fakeEngine{err: engine.ErrSocketMissing}, nil
 	}
 	s.inContainer = func() bool { return h.inCtr }
+	h.dockerLog = filepath.Join(dir, "docker.log")
+	script := filepath.Join(dir, "docker")
+	if err := os.WriteFile(script, []byte(fakeDocker), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s.runner = compose.Runner{Docker: script}
+	t.Setenv("FAKE_DOCKER_LOG", h.dockerLog)
 	s.selfIDs = func() []string { return []string{"abc123"} }
 	return h
 }

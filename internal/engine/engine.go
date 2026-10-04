@@ -173,6 +173,18 @@ func (e *Client) ComposeContainers(ctx context.Context, slot string) ([]compose.
 	return out, nil
 }
 
+// ContainerLabels returns the labels of one container.
+func (e *Client) ContainerLabels(ctx context.Context, id string) (map[string]string, error) {
+	res, err := e.c.ContainerInspect(ctx, id, client.ContainerInspectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if res.Container.Config == nil {
+		return map[string]string{}, nil
+	}
+	return res.Container.Config.Labels, nil
+}
+
 // ContainerMounts returns the mounts of one container.
 func (e *Client) ContainerMounts(ctx context.Context, id string) ([]compose.Mount, error) {
 	res, err := e.c.ContainerInspect(ctx, id, client.ContainerInspectOptions{})

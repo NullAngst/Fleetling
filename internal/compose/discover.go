@@ -29,11 +29,12 @@ const maxReadSize = 4 << 20
 
 // Meta is the content of .fleetling.toml.
 type Meta struct {
-	Project      string    `toml:"project"`
-	Engine       string    `toml:"engine"`
-	Created      time.Time `toml:"created"`
-	CreatedPaths []string  `toml:"created_paths"`
-	GitRepo      string    `toml:"git_repo,omitempty"`
+	Project      string     `toml:"project"`
+	Engine       string     `toml:"engine"`
+	Created      time.Time  `toml:"created"`
+	CreatedPaths []string   `toml:"created_paths"`
+	Deployed     *time.Time `toml:"deployed,omitempty"` // first successful up; path tracking runs until it is set
+	GitRepo      string     `toml:"git_repo,omitempty"`
 }
 
 // Engine slot names. A stack runs on one of the two configured endpoints.
@@ -80,6 +81,17 @@ func Discover(root string, ignore []string) ([]Folder, error) {
 		}
 	}
 	return out, nil
+}
+
+// ReadFolder reads one stack folder. ok is false when it holds neither a
+// compose file nor a .fleetling.toml.
+func ReadFolder(dir string) (Folder, bool) { return readFolder(dir) }
+
+// ValidFolderName reports whether name is usable as a stack folder directly
+// under the root: one path element, not hidden.
+func ValidFolderName(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".") &&
+		!strings.ContainsAny(name, "/\\\x00") && len(name) <= 255
 }
 
 func readFolder(dir string) (Folder, bool) {

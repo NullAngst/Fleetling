@@ -79,3 +79,58 @@ document.addEventListener("keydown", (e) => {
     box.focus();
   }
 });
+
+// Confirm before every stack action, showing the exact command. Buttons
+// with data-command open the dialog; without JavaScript the form just posts.
+const dialog = document.getElementById("confirm-dialog");
+let confirmed = null;
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-command]");
+  if (!btn || !dialog) return;
+  if (confirmed === btn) { confirmed = null; return; }
+  e.preventDefault();
+  dialog.querySelector("[data-confirm-title]").textContent = btn.dataset.title || btn.textContent;
+  dialog.querySelector("[data-confirm-command]").textContent = btn.dataset.command;
+  dialog.querySelector("[data-confirm-ok]").classList.toggle("danger", btn.hasAttribute("data-danger"));
+  dialog.querySelector("[data-confirm-ok]").classList.toggle("primary", !btn.hasAttribute("data-danger"));
+  dialog.returnValue = "";
+  dialog.onclose = () => {
+    if (dialog.returnValue === "ok") { confirmed = btn; btn.click(); }
+  };
+  dialog.showModal();
+});
+
+// Live output for a running action, over a websocket.
+for (const box of document.querySelectorAll("[data-job]")) {
+  const out = box.querySelector(".job-out");
+  const status = box.querySelector(".job-status");
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/jobs/${box.dataset.job}/ws`);
+  ws.onopen = () => { status.textContent = "Running"; };
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+    if (msg.lines) {
+      const stick = out.scrollTop + out.clientHeight >= out.scrollHeight - 4;
+      out.textContent += msg.lines.join("\n") + "\n";
+      if (stick) out.scrollTop = out.scrollHeight;
+    }
+    if (msg.done) {
+      status.textContent = msg.exit === 0 ? "Finished, exit 0. " : `Failed, exit ${msg.exit}. `;
+      status.classList.toggle("warn", msg.exit !== 0);
+      const a = document.createElement("a");
+      a.href = location.pathname;
+      a.textContent = "Reload status";
+      status.appendChild(a);
+    }
+  };
+  ws.onerror = () => { status.textContent = "Lost the connection. The action keeps running; reload to check."; };
+}
+
+// Blurred secrets on the env tab: click or Enter to show.
+document.addEventListener("click", (e) => {
+  const s = e.target.closest(".secret");
+  if (s) s.classList.add("shown");
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.classList && e.target.classList.contains("secret")) e.target.classList.add("shown");
+});

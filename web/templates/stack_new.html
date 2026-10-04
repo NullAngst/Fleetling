@@ -1,0 +1,26 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>New stack</h1>
+<form method="post" action="/stacks/new" class="form editor-form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <div class="field-row">
+    <label>Project name
+      <input name="project" class="mono" value="{{$d.Project}}" required pattern="[a-z0-9][a-z0-9_\-]*" autofocus>
+      <small>Lowercase letters, digits, - and _. Passed to Compose with -p.</small>
+    </label>
+    <label>Folder under <span class="mono">{{$d.Root}}</span>
+      <input name="folder" class="mono" value="{{$d.FolderName}}" placeholder="same as the project">
+      <small>An existing folder works too, as long as it has no compose file yet.</small>
+    </label>
+    {{if gt (len $d.Engines) 1}}
+    <label>Engine
+      <select name="engine">{{range $d.Engines}}<option value="{{.}}" {{if eq . $d.Engine}}selected{{end}}>{{.}}</option>{{end}}</select>
+    </label>
+    {{else}}<input type="hidden" name="engine" value="{{$d.Engine}}">{{end}}
+  </div>
+  {{template "editors" $d}}
+  <label class="check"><input type="checkbox" name="deploy" value="1" {{if $d.Deploy}}checked{{end}}> Deploy now</label>
+  {{if $d.ValidationErr}}<label class="check"><input type="checkbox" name="force" value="1"> Save anyway</label>{{end}}
+  <button type="submit" class="primary">Create</button>
+</form>
+{{end}}

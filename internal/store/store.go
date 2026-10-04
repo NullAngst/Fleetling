@@ -25,6 +25,17 @@ var migrations = []string{
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	)`,
+	`CREATE TABLE actions (
+		id        INTEGER PRIMARY KEY,
+		started   INTEGER NOT NULL,          -- unix milliseconds
+		finished  INTEGER,                   -- NULL while running
+		target    TEXT    NOT NULL,          -- stack folder or object name
+		engine    TEXT    NOT NULL DEFAULT '',
+		command   TEXT    NOT NULL,          -- one line per command run
+		exit_code INTEGER,                   -- NULL while running
+		output    TEXT    NOT NULL DEFAULT '' -- last 200 lines
+	)`,
+	`CREATE INDEX actions_started ON actions (started)`,
 }
 
 // Open opens (or creates) the database at path and brings the schema up to

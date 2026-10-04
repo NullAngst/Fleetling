@@ -42,6 +42,7 @@ type Stack struct {
 	ProjectSource string
 	Engine        string // "" when unknown, e.g. an On disk folder with nothing running
 	Dir           string // stack folder, or the working dir label for External
+	Folder        string // folder name under the root, empty for External
 	ComposeFile   string
 	Kind          Kind
 	State         State
@@ -128,6 +129,7 @@ func Merge(folders []Folder, containers []Container, reachable map[string]bool) 
 			Project:       f.Project,
 			ProjectSource: f.ProjectSource,
 			Dir:           f.Dir,
+			Folder:        f.Name,
 			ComposeFile:   f.ComposeFile,
 			Kind:          KindOnDisk,
 			Warnings:      slices.Clone(f.Warnings),

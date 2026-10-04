@@ -18,11 +18,16 @@ type page struct {
 	Version string
 	Error   string
 	Notice  string
+	Editor  bool   // load the CodeMirror bundle
+	Nonce   string // CSP nonce for injected <style> elements
 	Data    any
 }
 
 var funcs = template.FuncMap{
-	"join": strings.Join,
+	"join":  strings.Join,
+	"add":   func(a, b int) int { return a + b },
+	"sub":   func(a, b int) int { return a - b },
+	"deref": func(p *int) int { return *p },
 }
 
 // loadTemplates parses each page together with layout.html, and each
@@ -34,16 +39,22 @@ func loadTemplates(fsys fs.FS) (map[string]*template.Template, error) {
 	if err != nil {
 		return nil, err
 	}
+	// shared_*.html hold {{define}} blocks any page may use.
+	shared, err := fs.Glob(fsys, "templates/shared_*.html")
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range pages {
 		name := strings.TrimSuffix(strings.TrimPrefix(p, "templates/"), ".html")
-		if name == "layout" {
+		if name == "layout" || strings.HasPrefix(name, "shared_") {
 			continue
 		}
 		var t *template.Template
 		if strings.HasPrefix(name, "partial_") {
 			t, err = template.New(name).Funcs(funcs).ParseFS(fsys, p)
 		} else {
-			t, err = template.New(name).Funcs(funcs).ParseFS(fsys, "templates/layout.html", p)
+			files := append([]string{"templates/layout.html", p}, shared...)
+			t, err = template.New(name).Funcs(funcs).ParseFS(fsys, files...)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("template %s: %w", name, err)
@@ -84,6 +95,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) page {
 		Authed:  s.authed(r),
 		CSRF:    s.csrfToken(r),
 		Version: s.cfg.Version,
+		Nonce:   nonceFrom(r),
 		Data:    data,
 	}
 }

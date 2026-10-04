@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1>Action log</h1>
+<p class="muted">Every command Fleetling ran and every file it wrote, kept for 90 days.{{if .Data.Target}} Showing <span class="mono">{{.Data.Target}}</span>. <a href="/actions">Show all</a>{{end}}</p>
+{{template "action_rows" .Data.Actions}}
+<p class="actions">
+  {{if gt .Data.Page 1}}<a href="/actions?target={{.Data.Target}}&page={{sub .Data.Page 1}}">Newer</a>{{end}}
+  {{if .Data.More}}<a href="/actions?target={{.Data.Target}}&page={{add .Data.Page 1}}">Older</a>{{end}}
+</p>
+{{end}}

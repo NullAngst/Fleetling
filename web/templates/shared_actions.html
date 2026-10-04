@@ -1,0 +1,22 @@
+{{define "action_rows"}}
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Time</th><th>Stack</th><th>Command</th><th>Exit</th></tr></thead>
+  <tbody>
+  {{range .}}
+    <tr>
+      <td data-label="Time" class="mono nowrap">{{.Started.Format "2006-01-02 15:04:05"}}</td>
+      <td data-label="Stack"><a class="mono" href="/stacks/{{.Target}}">{{.Target}}</a></td>
+      <td data-label="Command">
+        <details>
+          <summary class="mono">{{.Command}}</summary>
+          {{if .Output}}<pre class="code mono">{{.Output}}</pre>{{else}}<p class="muted">No output.</p>{{end}}
+        </details>
+      </td>
+      <td data-label="Exit" class="mono">{{if .ExitCode}}{{if eq (deref .ExitCode) 0}}<span class="dot dot-ok"></span>0{{else}}<span class="dot dot-stopped"></span>{{deref .ExitCode}}{{end}}{{else}}<span class="muted">running or interrupted</span>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="4" class="muted">Nothing yet.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

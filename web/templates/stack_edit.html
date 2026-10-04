@@ -1,0 +1,13 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Edit <span class="mono">{{$d.Folder.Name}}</span></h1>
+<form method="post" action="/stacks/{{$d.Folder.Name}}/edit" class="form editor-form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="hash" value="{{$d.Hash}}">
+  {{template "editors" $d}}
+  <div class="actions">
+    <button type="submit" name="step" value="review" class="primary">Review changes</button>
+    <a href="/stacks/{{$d.Folder.Name}}">Cancel</a>
+  </div>
+</form>
+{{end}}
