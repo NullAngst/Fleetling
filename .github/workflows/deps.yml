@@ -17,6 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # This job runs freshly updated third-party code (go test, the
+          # npm build). Keep the write token out of .git/config so none of
+          # that can push. The pull-request step passes its own token.
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -27,7 +32,8 @@ jobs:
         run: go get -u ./... && go mod tidy
       - name: npm packages
         working-directory: web/src
-        run: npx --yes npm-check-updates -u && npm install && npm run build
+        # --ignore-scripts: freshly bumped packages get no install hooks.
+        run: npx --yes npm-check-updates -u && npm install --ignore-scripts && npm run build
       # PRs opened with the built-in token do not trigger other workflows,
       # so the checks run here before the PR exists.
       - run: go vet ./...
@@ -35,7 +41,8 @@ jobs:
       - run: go test -race ./...
       - name: Image builds against the newest base images
         run: docker build --pull -t fleetling:deps-check .
-      - uses: peter-evans/create-pull-request@v8
+      # Third-party action pinned to a commit. v8.1.1.
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
         with:
           branch: deps/weekly
           delete-branch: true
