@@ -54,6 +54,8 @@ type stackPageData struct {
 	JobID         string
 	Recent        []store.Action
 	TargetErr     string
+	Review        string // "", "modified" or "unrecorded"
+	ReviewCount   int
 }
 
 // Keys whose values the env view blurs until clicked.
@@ -148,6 +150,9 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 	if si, ok := s.self(ctx, st); ok && si.is(f) {
 		d.Self = true
 	}
+	if rs, err := s.reviewFor(ctx, f); err == nil {
+		d.Review, d.ReviewCount = rs.State, len(rs.Changes)
+	}
 	if t, err := s.target(st, f); err == nil {
 		for _, a := range stackActions {
 			d.Actions = append(d.Actions, actionButton{Key: a.Key, Label: a.Label, Command: s.commandLine(t, a), Danger: a.Danger})
@@ -169,6 +174,8 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 		p.Notice = "Saved."
 	case "managed":
 		p.Notice = "Now managed. The project name and engine live in " + compose.MetaFile + "."
+	case "approved":
+		p.Notice = "Approved. The current files are now the ones Fleetling deploys."
 	}
 	s.render(w, http.StatusOK, "stack", p)
 }
@@ -225,6 +232,11 @@ func (s *Server) manageStack(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	err = compose.WriteMeta(f.Dir, m, compose.OwnerOf(f.Dir))
+	if err == nil {
+		// Managing is the moment the user looked at this folder and said
+		// "this is the stack", so its files become the approved state.
+		err = s.recordBaseline(ctx, f.Dir, "manage")
+	}
 	s.logFileAction(ctx, f.Name, slot, "fleetling: write "+filepath.Join(f.Dir, compose.MetaFile)+" (project "+project+", engine "+slot+")", err)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -255,6 +267,10 @@ func (s *Server) stackAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := s.runAction(ctx, st, f, a)
+	if errors.Is(err, errNeedsReview) {
+		http.Redirect(w, r, "/stacks/"+f.Name+"/review?action="+a.Key, http.StatusSeeOther)
+		return
+	}
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, compose.ErrBusy) {

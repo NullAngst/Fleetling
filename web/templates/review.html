@@ -1,0 +1,47 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Review <span class="mono">{{$d.Folder.Name}}</span></h1>
+{{if eq $d.State "modified"}}
+<p>These files changed outside Fleetling since they were last saved or approved{{if not $d.Recorded.Recorded.IsZero}} ({{$d.Recorded.Source}}, {{$d.Recorded.Recorded.Format "2006-01-02 15:04"}}){{end}}. Nothing in this stack runs, and auto-update skips it, until you approve them.</p>
+<p class="notice-line">If you didn't make these changes, don't approve them. A container that mounts its own stack folder can rewrite these files; check for added <span class="mono">privileged</span>, host mounts, <span class="mono">network_mode: host</span>, <span class="mono">cap_add</span>, new images, or a changed <span class="mono">project</span> in .fleetling.toml. Fix the files on the host, then come back.</p>
+{{range $d.Files}}
+<h2 class="mono">{{.Path}} <span class="muted">{{.Kind}}</span></h2>
+{{if .Diffable}}{{template "diff" .Rows}}{{else}}<p class="muted">Too large to show; the hash changed.</p>{{end}}
+{{end}}
+{{else if eq $d.State "unrecorded"}}
+<p>Fleetling has no approved record of this stack's files yet, so it won't run anything here until you've looked at them once. These are the files a deploy would use:</p>
+{{range $d.Current.Files}}{{if .Exists}}
+<h2 class="mono">{{.Path}}</h2>
+{{if .TooLarge}}<p class="muted">Too large to show.</p>{{else}}<pre class="code mono">{{.Content}}</pre>{{end}}
+{{end}}{{end}}
+{{else}}
+<p>Nothing to review. The files match what was last saved or approved.</p>
+{{end}}
+
+{{if $d.State}}
+<form method="post" action="/stacks/{{$d.Folder.Name}}/review" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="fingerprint" value="{{$d.Fingerprint}}">
+  <div class="actions">
+    <button type="submit" class="primary" data-command="approve the files shown on this page" data-title="Approve these files for {{$d.Folder.Name}}?">Approve these files</button>
+    <a href="/stacks/{{$d.Folder.Name}}">Back</a>
+  </div>
+  <p class="muted">Approving records the files exactly as shown here. If they change again before you click, you'll get the new diff instead.{{if $d.Action}} Then run {{$d.Action}} again from the stack page.{{end}}</p>
+</form>
+{{else}}<p><a href="/stacks/{{$d.Folder.Name}}">Back to the stack</a></p>{{end}}
+{{end}}
+
+{{define "diff"}}
+<div class="table-wrap">
+<table class="diff mono">
+  <tbody>
+  {{range .}}
+  <tr class="d-{{.Kind}}">
+    <td class="ln">{{if .LeftNo}}{{.LeftNo}}{{end}}</td><td class="l">{{.Left}}</td>
+    <td class="ln">{{if .RightNo}}{{.RightNo}}{{end}}</td><td class="r">{{.Right}}</td>
+  </tr>
+  {{else}}<tr><td class="muted">Empty.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

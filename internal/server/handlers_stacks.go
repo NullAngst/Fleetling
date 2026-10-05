@@ -39,6 +39,17 @@ func (s *Server) stacksPage(w http.ResponseWriter, r *http.Request) {
 		reachable[e.Slot] = e.Up
 	}
 	d.Stacks = compose.Merge(folders, containers, reachable)
+	byDir := map[string]compose.Folder{}
+	for _, f := range folders {
+		byDir[f.Dir] = f
+	}
+	for i := range d.Stacks {
+		if f, ok := byDir[d.Stacks[i].Dir]; ok && f.Meta != nil {
+			if rs, err := s.reviewFor(ctx, f); err == nil {
+				d.Stacks[i].Review = rs.State
+			}
+		}
+	}
 	for _, st := range d.Stacks {
 		switch st.Kind {
 		case compose.KindManaged:

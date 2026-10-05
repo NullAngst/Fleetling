@@ -12,3 +12,5 @@ services:
     environment:
       - FLEETLING_ROOT=/opt
       - FLEETLING_DATA=/opt/fleetling/data
+      # Your server's LAN IP and name, so the certificate covers them:
+      # - FLEETLING_TLS_HOSTS=192.168.1.10,server.lan

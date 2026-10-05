@@ -104,6 +104,11 @@ func (s *Server) runAction(ctx context.Context, st store.Settings, f compose.Fol
 	if s.jobs.Running(f.Name) != nil {
 		return nil, compose.ErrBusy
 	}
+	// Nothing runs from files that changed outside Fleetling until the
+	// user has looked at them.
+	if err := s.reviewedOrErr(ctx, f); err != nil {
+		return nil, err
+	}
 	var steps []compose.Step
 	var lines []string
 	for _, argv := range a.Steps {
@@ -163,6 +168,10 @@ func (s *Server) runAction(ctx context.Context, st store.Settings, f compose.Fol
 			}
 			if len(created) > 0 {
 				j.Linef("fleetling: recorded created paths: %s", strings.Join(created, ", "))
+			}
+			// Fleetling just changed .fleetling.toml itself; that is not drift.
+			if err := s.recordBaseline(context.Background(), f.Dir, "deploy"); err != nil {
+				j.Linef("fleetling: could not record the stack's files: %v", err)
 			}
 		},
 		Done: func(j *compose.Job) {

@@ -51,12 +51,15 @@ Compose builds the image straight from this repo, so there's nothing to clone.
        environment:
          - FLEETLING_ROOT=/opt
          - FLEETLING_DATA=/opt/fleetling/data
+         # Your server's LAN IP and name, so the certificate covers them:
+         # - FLEETLING_TLS_HOSTS=192.168.1.10,server.lan
    ```
 
    On Podman, add `- /run/podman/podman.sock:/run/podman/podman.sock` under `volumes`.
 3. Build and start it from that folder: `cd /opt/fleetling && docker compose up -d --build`
 4. Grab the one-time setup token from the log: `docker logs fleetling`
-5. Open `http://<server>:8420`, paste the token, pick a password of at least 12 characters, and confirm the stack root.
+5. Open `https://<server>:8420`. Your browser warns about the certificate, since Fleetling made it itself. Before accepting, compare its SHA-256 fingerprint (click the warning's details, or the padlock) with the `sha256=` line in `docker logs fleetling`. If they match, accept it.
+6. Paste the token, pick a password of at least 12 characters, and confirm the stack root.
 
 The setup token exists because whoever finishes setup first owns the Docker socket. Without it, anyone on your LAN who opened the page before you did would get root on the host.
 
@@ -80,12 +83,26 @@ I beg you not to port-forward it. Put it behind your reverse proxy with TLS for 
 ssh -L 8420:localhost:8420 you@server
 ```
 
-Then open `http://localhost:8420`.
+Then open `https://localhost:8420`.
 
 Two things that catch people out:
 
 - Docker publishes ports by writing its own iptables rules, and those skip UFW entirely. A `ufw deny 8420` does nothing for `"8420:8420"`. If your reverse proxy runs on the same host (NPMPlus with `network_mode: host` does), publish the port on loopback only, `"127.0.0.1:8420:8420"`, and point the proxy at `127.0.0.1:8420`. Then nothing but the proxy can reach Fleetling.
-- On plain `http://server:8420`, the password and the session cookie cross your LAN in cleartext, and anyone who captures the cookie is root on the host for seven days or until you use "Log out everywhere". Use the TLS proxy for normal use. Behind it, set `FLEETLING_TRUSTED_PROXIES` (below) so cookies get the Secure flag.
+- Turning TLS off (below) puts the password and the session cookie on the wire in cleartext, and anyone who captures the cookie is root on the host for seven days or until you use "Log out everywhere". Only turn it off with the port bound to `127.0.0.1` behind a proxy on the same host.
+
+### TLS
+
+Fleetling serves HTTPS by default. On first start it makes a self-signed certificate in `<data>/tls/`, logs its SHA-256 fingerprint, and reuses it on every restart. It renews itself 30 days before it expires, roughly once a year, and logs the new fingerprint when it does. A self-signed certificate means one browser warning per browser; check the fingerprint once, accept it, and you're done until the next renewal.
+
+Why no HSTS header? Because with a self-signed certificate, HSTS would turn the browser's warning into a hard block you can't click through.
+
+| Variable | What it does |
+| --- | --- |
+| `FLEETLING_TLS_HOSTS` | Extra names and IPs for the generated certificate, comma separated: your server's LAN IP and DNS name, like `192.168.1.10,server.lan`. The container can't see those itself. Changing this list makes a new certificate. |
+| `FLEETLING_TLS_CERT`, `FLEETLING_TLS_KEY` | Use your own certificate and key instead, PEM files mounted into the container. Replacing the files takes effect without a restart. |
+| `FLEETLING_TLS` | `off` serves plain HTTP. Only for running behind a reverse proxy on the same host with the port bound to `127.0.0.1`. |
+
+Behind NPMPlus, either set the proxy host's scheme to `https` (NPMPlus doesn't verify upstream certificates, so the self-signed one is fine), or set `FLEETLING_TLS=off` and publish the port as `"127.0.0.1:8420:8420"`.
 
 ### Behind a reverse proxy
 
@@ -140,6 +157,9 @@ docker compose build --pull && docker compose up -d
 | `FLEETLING_ROOT` | `/opt` | Pre-fills the stack root on first run |
 | `FLEETLING_DATA` | `<root>/fleetling/data` | Where `fleetling.db` lives: password hash, session secret, settings |
 | `FLEETLING_ADDR` | `:8420` | Listen address |
+| `FLEETLING_TLS` | on | `off` for plain HTTP behind a local proxy; see TLS above |
+| `FLEETLING_TLS_HOSTS` | empty | Extra names for the self-signed certificate |
+| `FLEETLING_TLS_CERT`, `FLEETLING_TLS_KEY` | empty | Your own certificate and key |
 | `FLEETLING_TRUSTED_PROXIES` | empty | Proxy IPs or CIDRs whose forwarding headers are trusted |
 
 Everything else is set in the UI. The database holds settings only. Stack state lives in the stack folders and in the engines, and Fleetling rediscovers it on every page load.
@@ -172,8 +192,22 @@ A few things worth knowing:
 - `.env` is saved at mode 600. On the Env tab, values for keys containing PASS, SECRET, TOKEN or KEY are blurred until you click them. If `.env` is a symlink to another file in the stack folder, the edit goes to that file and the link stays.
 - Files written into an existing folder keep that folder's owner. `/opt/jellyfin` stays owned by whoever owned it.
 - On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what the "remove with folders" option in phase 6 cleans up.
-- If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. Take that notice seriously for anything exposed to the internet: a compromised container that can write its own `compose.yaml` can add `privileged: true` or a `/:/host` mount, and the next Deploy, Update or Recreate you click runs it as root on the host. Fleetling does not yet show you on-disk changes before deploying them. Moving the app's data into a subfolder like `/opt/copyparty/cfg` closes this. The same goes for any container that mounts `/opt` itself: it can also read `fleetling.db` in `/opt/fleetling/data`, which holds the session secret. Set `FLEETLING_DATA` to a path outside the root, on its own volume, if you run one.
+- If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. A compromised container that can write its own `compose.yaml` could add `privileged: true` or a `/:/host` mount. Fleetling catches that (see "Changes made outside Fleetling" below), but moving the app's data into a subfolder like `/opt/copyparty/cfg` means it can't happen in the first place. The same goes for any container that mounts `/opt` itself: it can also read `fleetling.db` in `/opt/fleetling/data`, which holds the session secret. Set `FLEETLING_DATA` to a path outside the root, on its own volume, if you run one.
 - Fleetling's own stack can be edited but not deployed, stopped or restarted from inside. The process would die halfway through. Self-updates arrive in phase 7; until then, update it from the host.
+
+## Changes made outside Fleetling
+
+Fleetling keeps a record of every managed stack's deployment files: the compose file, `.env`, `.fleetling.toml`, every `env_file` a service names, and every file pulled in with `include:` or `extends:`. The record is updated whenever Fleetling writes those files itself (create, save, Manage, import, the first deploy's path tracking) and when you approve a review. It lives in Fleetling's database, not in the stack folder, so a container that can write its own folder can't rewrite it too.
+
+Before any compose action, Deploy, Update, Restart, Recreate, Start, Stop or Down, the files on disk are compared with that record. If anything differs, nothing runs. The stack is flagged on the stacks page and its own page, and the action takes you to a review page with a side-by-side diff of every changed file. Approve, and the current files become the record; then run the action again. Editing a flagged stack also goes through the review first, since the editor would otherwise load the changed text and approve it on save without anyone looking.
+
+Why does Stop count? Because the project name lives in `.fleetling.toml`, and a changed project name would aim Stop or Down at a different stack.
+
+Did you edit a compose file over SSH yourself? Then the review is just you confirming your own change, one click. Stacks managed before this check existed show "not reviewed yet" and need that one click once.
+
+The scheduled auto-update (phase 11) runs the same check and skips a flagged stack instead of deploying it.
+
+Not covered: build contexts and Dockerfiles (they arrive with builds in phase 9), and files behind `configs:` and `secrets:`, which apps often rewrite themselves.
 
 ## Containers, logs and the shell
 

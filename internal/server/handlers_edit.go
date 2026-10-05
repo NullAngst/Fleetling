@@ -192,6 +192,9 @@ func (s *Server) newStackSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = s.writeNewStack(dir, existed, d)
+	if err == nil {
+		err = s.recordBaseline(ctx, dir, "create")
+	}
 	s.logFileAction(ctx, d.FolderName, d.Engine, "fleetling: create stack "+d.Project+" in "+dir, err)
 	if err != nil {
 		fail(err.Error())
@@ -258,6 +261,13 @@ func (s *Server) editForm(w http.ResponseWriter, r *http.Request) {
 	f, ok := loadFolder(st, r.PathValue("folder"))
 	if !ok || f.ComposeFile == "" {
 		http.NotFound(w, r)
+		return
+	}
+	// Editing a stack whose files changed outside Fleetling would load the
+	// changed text into the editor and approve it on save without anyone
+	// looking at the difference. Review first.
+	if rs, err := s.reviewFor(r.Context(), f); err != nil || rs.State != reviewOK {
+		http.Redirect(w, r, "/stacks/"+f.Name+"/review", http.StatusSeeOther)
 		return
 	}
 	c, e, ex, err := readStackFiles(f)
@@ -344,7 +354,14 @@ func (s *Server) editSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if rs, err := s.reviewFor(ctx, f); err != nil || rs.State != reviewOK {
+		render(http.StatusConflict, "files in this stack changed outside Fleetling. Review them on the stack page before saving")
+		return
+	}
 	err = s.saveStackFiles(f, oldE, envExists, d.Compose, d.Env)
+	if err == nil {
+		err = s.recordBaseline(ctx, f.Dir, "save")
+	}
 	s.logFileAction(ctx, f.Name, engineOf(f), "fleetling: save "+filepath.Join(f.Dir, f.ComposeFile)+" and .env", err)
 	if err != nil {
 		render(http.StatusInternalServerError, err.Error())

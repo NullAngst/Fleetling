@@ -200,6 +200,7 @@ func TestEditFlow(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "stack.env"), []byte("A=1\n"), 0o600)
 	os.Symlink("stack.env", filepath.Join(dir, ".env"))
 	compose.WriteMeta(dir, &compose.Meta{Project: "app", Engine: "docker", Deployed: ptr(time.Now())}, compose.Owner{})
+	h.approve(dir)
 
 	edit := b.do("GET", "/stacks/app/edit", nil, nil).Body.String()
 	hash := regexp.MustCompile(`name="hash" value="([0-9a-f]+)"`).FindStringSubmatch(edit)[1]
@@ -276,6 +277,7 @@ func TestSelfStackRefusesActions(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {fleetling: {image: x}}\n"), 0o644)
 	compose.WriteMeta(dir, &compose.Meta{Project: "fleetling", Engine: "docker"}, compose.Owner{})
+	h.approve(dir)
 	h.inCtr = true
 	fe := h.engines[store.DefaultDockerHost]
 	fe.mounts = []compose.Mount{{Type: "bind", Source: h.root, Destination: h.root}}
@@ -296,6 +298,7 @@ func TestJobWebsocket(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {a: {image: x}}\n"), 0o644)
 	compose.WriteMeta(dir, &compose.Meta{Project: "ws", Engine: "docker", Deployed: ptr(time.Now())}, compose.Owner{})
+	h.approve(dir)
 	w := b.do("POST", "/stacks/ws/action/down", url.Values{"csrf": {b.token("/stacks/ws")}}, nil)
 	id := regexp.MustCompile(`job=([0-9a-f]+)`).FindStringSubmatch(w.Header().Get("Location"))[1]
 

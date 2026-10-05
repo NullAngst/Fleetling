@@ -33,6 +33,7 @@
     <tr>
       <td data-label="Project">
         {{if .Folder}}<a class="mono" href="/stacks/{{.Folder}}">{{.Project}}</a>{{else}}<span class="mono">{{.Project}}</span>{{end}}
+        {{if eq .Review "modified"}}<div><a class="warn" href="/stacks/{{.Folder}}/review">changed outside Fleetling, review</a></div>{{else if eq .Review "unrecorded"}}<div><a class="muted small" href="/stacks/{{.Folder}}/review">not reviewed yet</a></div>{{end}}
         {{range .Warnings}}<div class="warn">{{.}}</div>{{end}}
       </td>
       <td data-label="Status"><span class="dot dot-{{if eq .Kind "managed"}}{{.State}}{{else}}{{.Kind}}{{end}}"></span>{{.Label}}</td>

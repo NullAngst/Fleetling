@@ -49,6 +49,7 @@ type Stack struct {
 	Running       int // services with at least one running container
 	Total         int
 	Warnings      []string
+	Review        string // set by the server: "", "modified" or "unrecorded"
 }
 
 // Label is the text for the status column. Managed stacks show their run

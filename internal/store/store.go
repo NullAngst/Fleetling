@@ -36,6 +36,15 @@ var migrations = []string{
 		output    TEXT    NOT NULL DEFAULT '' -- last 200 lines
 	)`,
 	`CREATE INDEX actions_started ON actions (started)`,
+	// The approved state of each stack's deployment files, keyed by folder
+	// name. Kept here, not in the stack folder, so a container that can
+	// write its own folder can't also rewrite what was approved.
+	`CREATE TABLE stack_baselines (
+		folder   TEXT PRIMARY KEY,
+		recorded INTEGER NOT NULL, -- unix milliseconds
+		source   TEXT    NOT NULL, -- what recorded it: create, save, approve, ...
+		snapshot TEXT    NOT NULL  -- JSON of compose.Snapshot
+	)`,
 }
 
 // Open opens (or creates) the database at path and brings the schema up to

@@ -196,6 +196,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /stacks/{folder}/edit", s.requireAuth(s.editForm))
 	mux.HandleFunc("POST /stacks/{folder}/edit", s.requireAuth(s.editSubmit))
 	mux.HandleFunc("POST /stacks/{folder}/manage", s.requireAuth(s.manageStack))
+	mux.HandleFunc("GET /stacks/{folder}/review", s.requireAuth(s.reviewPage))
+	mux.HandleFunc("POST /stacks/{folder}/review", s.requireAuth(s.reviewApprove))
 	mux.HandleFunc("POST /stacks/{folder}/action/{action}", s.requireAuth(s.stackAction))
 	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
 	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))

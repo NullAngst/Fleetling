@@ -224,6 +224,7 @@ func TestRecreateGoesThroughCompose(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {gitea: {image: x}}\n"), 0o644)
 	compose.WriteMeta(dir, &compose.Meta{Project: "gitea", Engine: "docker", Deployed: ptr(time.Now())}, compose.Owner{})
+	h.approve(dir)
 	if !strings.Contains(b.do("GET", "/containers/docker/"+giteaID, nil, nil).Body.String(), "--force-recreate --no-deps gitea") {
 		t.Fatal("no Recreate for a managed stack's container")
 	}
@@ -245,6 +246,7 @@ func TestStackLogsSocket(t *testing.T) {
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {app: {image: x}}\n"), 0o644)
 	compose.WriteMeta(dir, &compose.Meta{Project: "app", Engine: "docker"}, compose.Owner{})
+	h.approve(dir)
 	c, ctx := dial(t, h, b, "/stacks/app/logs/ws?tail=200&follow=1")
 	var lines []string
 	for {

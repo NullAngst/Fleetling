@@ -208,6 +208,10 @@ func (s *Server) containerAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		job, err := s.runAction(ctx, st, f, stackAction{Key: "recreate-" + d.Service, Label: "Recreate " + d.Service, Steps: [][]string{recreateStep(d.Service)}})
+		if errors.Is(err, errNeedsReview) {
+			http.Redirect(w, r, "/stacks/"+f.Name+"/review", http.StatusSeeOther)
+			return
+		}
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return

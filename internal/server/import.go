@@ -508,6 +508,9 @@ func (s *Server) importApply(w http.ResponseWriter, r *http.Request) {
 	for _, j := range jobs {
 		dir := filepath.Join(st.Root, j.folder)
 		err := s.writeImport(dir, j.c, j.text, j.env)
+		if err == nil {
+			err = s.recordBaseline(ctx, dir, "import")
+		}
 		what := "fleetling: import Portainer stack " + j.c.Name + " into " + dir
 		if j.applied {
 			what += fmt.Sprintf(" (%d relative paths made absolute)", len(j.c.Fixes))

@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,9 +16,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/NullAngst/Fleetling/internal/certs"
 	"github.com/NullAngst/Fleetling/internal/server"
 	"github.com/NullAngst/Fleetling/internal/store"
 )
@@ -58,6 +61,16 @@ func env(key, def string) string {
 }
 
 func listenAddr() string { return env("FLEETLING_ADDR", ":8420") }
+
+// tlsEnabled is on unless FLEETLING_TLS=off. Plain HTTP is for running
+// behind a reverse proxy on the same host, bound to 127.0.0.1.
+func tlsEnabled() bool {
+	switch strings.ToLower(os.Getenv("FLEETLING_TLS")) {
+	case "off", "false", "0", "no":
+		return false
+	}
+	return true
+}
 
 func serve() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -101,10 +114,38 @@ func serve() error {
 		// No WriteTimeout: later phases stream logs and shells for as long
 		// as the browser keeps them open.
 	}
+	if tlsEnabled() {
+		res, err := certs.Setup(certs.Options{
+			Dir:      filepath.Join(dataDir, "tls"),
+			CertFile: os.Getenv("FLEETLING_TLS_CERT"),
+			KeyFile:  os.Getenv("FLEETLING_TLS_KEY"),
+			Hosts:    strings.Split(os.Getenv("FLEETLING_TLS_HOSTS"), ","),
+		})
+		if err != nil {
+			return err
+		}
+		hs.TLSConfig = res.Config
+		kind := "your certificate"
+		if res.SelfSigned {
+			kind = "self-signed certificate"
+			if res.Generated {
+				kind = "new self-signed certificate"
+			}
+		}
+		// Compare this with what the browser shows before accepting it.
+		log.Info("TLS on with "+kind, "sha256", res.Fingerprint, "names", strings.Join(res.Names, ","), "expires", res.NotAfter.Format("2006-01-02"))
+	} else {
+		log.Warn("TLS is off (FLEETLING_TLS=off); only do this behind a reverse proxy on the same host")
+	}
+
 	errc := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", hs.Addr, "version", version, "root", root, "data", dataDir)
-		errc <- hs.ListenAndServe()
+		log.Info("listening", "addr", hs.Addr, "tls", hs.TLSConfig != nil, "version", version, "root", root, "data", dataDir)
+		if hs.TLSConfig != nil {
+			errc <- hs.ListenAndServeTLS("", "")
+		} else {
+			errc <- hs.ListenAndServe()
+		}
 	}()
 
 	select {
@@ -129,8 +170,15 @@ func healthcheck() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
+	scheme := "http"
 	c := http.Client{Timeout: 3 * time.Second}
-	resp, err := c.Get("http://127.0.0.1:" + port + "/healthz")
+	if tlsEnabled() {
+		// Our own process on loopback: the certificate is self-signed, and
+		// there is nothing to verify it against.
+		scheme = "https"
+		c.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
+	}
+	resp, err := c.Get(scheme + "://127.0.0.1:" + port + "/healthz")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

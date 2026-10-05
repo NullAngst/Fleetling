@@ -8,6 +8,8 @@
   <span class="mono muted">{{$d.Folder.Dir}}/{{$d.Folder.ComposeFile}}</span>
 </header>
 {{range $d.Stack.Warnings}}<div class="warn">{{.}}</div>{{end}}
+{{if eq $d.Review "modified"}}<div class="msg msg-error">{{$d.ReviewCount}} file{{if ne $d.ReviewCount 1}}s{{end}} in this stack changed outside Fleetling. Nothing here runs, and auto-update skips it, until you <a href="/stacks/{{$d.Folder.Name}}/review">review the changes</a>.</div>
+{{else if eq $d.Review "unrecorded"}}<div class="msg msg-notice">Fleetling hasn't recorded this stack's files yet. <a href="/stacks/{{$d.Folder.Name}}/review">Review them once</a> before running anything.</div>{{end}}
 {{if $d.FolderMounted}}<p class="notice-line">{{join $d.FolderMounted ", "}} mounts the stack folder itself, so the container can read .env and edit the compose file. For new stacks, a subfolder like <span class="mono">{{$d.Folder.Dir}}/cfg</span> avoids that.</p>{{end}}
 
 <div class="action-bar">

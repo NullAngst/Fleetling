@@ -478,3 +478,12 @@ func TestPreauthBodyIsCapped(t *testing.T) {
 		t.Errorf("1 MiB login body accepted: %d", w.Code)
 	}
 }
+
+// approve records a hand-made stack folder as reviewed, the way creating or
+// saving it through Fleetling would.
+func (h *harness) approve(dir string) {
+	h.t.Helper()
+	if err := h.s.recordBaseline(context.Background(), dir, "test"); err != nil {
+		h.t.Fatal(err)
+	}
+}
