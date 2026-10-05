@@ -36,6 +36,7 @@ case " $* " in
     echo " Container app-1  Started"; exit 0;;
   *" pull "*) echo " app Pulled"; exit 0;;
   *" down "*) echo " Container app-1  Removed"; exit 0;;
+  *" logs "*) echo "app-1  | hello from app"; echo "db-1   | ready"; exit 0;;
 esac
 exit 0
 `

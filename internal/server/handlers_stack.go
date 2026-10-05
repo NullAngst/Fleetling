@@ -94,7 +94,7 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d := stackPageData{Folder: f, Tab: r.URL.Query().Get("tab")}
 	switch d.Tab {
-	case "env", "services", "history":
+	case "env", "services", "history", "logs":
 	default:
 		d.Tab = "compose"
 	}

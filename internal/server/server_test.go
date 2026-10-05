@@ -26,7 +26,11 @@ func init() {
 	auth.DefaultParams = auth.Params{Memory: 1024, Time: 1, Threads: 1, SaltLen: 16, KeyLen: 32}
 }
 
+// fakeEngine covers the stack-side calls. Container calls go to the
+// embedded nil Engine and panic; the container tests use the real client
+// against enginetest instead.
 type fakeEngine struct {
+	Engine
 	info       engine.Info
 	containers []compose.Container
 	mounts     []compose.Mount

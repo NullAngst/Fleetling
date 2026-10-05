@@ -19,15 +19,19 @@ type page struct {
 	Error   string
 	Notice  string
 	Editor  bool   // load the CodeMirror bundle
+	Shell   bool   // load the xterm.js bundle
 	Nonce   string // CSP nonce for injected <style> elements
 	Data    any
 }
 
 var funcs = template.FuncMap{
-	"join":  strings.Join,
-	"add":   func(a, b int) int { return a + b },
-	"sub":   func(a, b int) int { return a - b },
-	"deref": func(p *int) int { return *p },
+	"join":      strings.Join,
+	"add":       func(a, b int) int { return a + b },
+	"sub":       func(a, b int) int { return a - b },
+	"deref":     func(p *int) int { return *p },
+	"hasPrefix": strings.HasPrefix,
+	"bytes":     humanBytes,
+	"pct":       func(f float64) string { return fmt.Sprintf("%.1f%%", f) },
 }
 
 // loadTemplates parses each page together with layout.html, and each
@@ -98,4 +102,18 @@ func (s *Server) page(r *http.Request, title, active string, data any) page {
 		Nonce:   nonceFrom(r),
 		Data:    data,
 	}
+}
+
+// humanBytes formats a byte count the way docker stats does, in binary units.
+func humanBytes(n uint64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := uint64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }

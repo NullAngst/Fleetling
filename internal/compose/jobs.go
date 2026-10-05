@@ -250,6 +250,9 @@ func runStep(j *Job, c *exec.Cmd) int {
 	return -1
 }
 
+// ReadLines splits a stream on \n and \r and calls emit per non-empty line.
+func ReadLines(r io.Reader, emit func(string)) { readLines(r, emit) }
+
 // readLines splits on \n and \r so progress redraws become separate lines.
 func readLines(r io.Reader, emit func(string)) {
 	sc := bufio.NewScanner(r)

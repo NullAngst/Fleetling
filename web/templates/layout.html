@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/dist/main.js" defer></script>
 {{if .Editor}}<script src="/static/dist/editor.js" defer></script>{{end}}
+{{if .Shell}}<link rel="stylesheet" href="/static/dist/shell.css"><script src="/static/dist/shell.js" defer></script>{{end}}
 </head>
 <body class="{{if .Authed}}app{{else}}bare{{end}}">
 {{if .Authed}}
@@ -17,6 +18,7 @@
   <div class="brand">Fleetling</div>
   <ul>
     <li><a href="/" {{if eq .Active "stacks"}}aria-current="page"{{end}}>Stacks</a></li>
+    <li><a href="/containers" {{if eq .Active "containers"}}aria-current="page"{{end}}>Containers</a></li>
     <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>Action log</a></li>
     <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a></li>
   </ul>

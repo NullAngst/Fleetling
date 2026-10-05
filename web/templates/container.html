@@ -1,0 +1,51 @@
+{{define "content"}}
+{{$d := .Data}}{{$c := $d.Detail}}
+<header class="stack-head">
+  <h1 class="mono">{{$c.Name}}</h1>
+  <span><span class="dot dot-{{if $c.Running}}ok{{else}}stopped{{end}}"></span>{{$c.State}}{{if $c.Health}} ({{$c.Health}}){{end}}</span>
+  <span class="mono muted">{{$c.ShortID}}</span>
+  <span class="mono">{{$c.Image}}</span>
+  <span>{{$d.Slot}}</span>
+  {{if $d.Folder}}<span>stack <a class="mono" href="/stacks/{{$d.Folder}}">{{$c.Project}}</a>{{if $c.Service}} / {{$c.Service}}{{end}}</span>{{else if $c.Project}}<span class="muted">project {{$c.Project}}</span>{{end}}
+</header>
+{{if $c.Running}}<div class="stats" hx-get="/containers/{{$d.Slot}}/{{$c.ID}}/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"><span class="muted">Reading stats...</span></div>{{end}}
+
+<div class="action-bar">
+{{if $d.Self}}
+  <span class="muted">This is Fleetling's own container. Stop, restart and remove are off here; logs, shell and inspect work.</span>
+{{else}}
+  {{range $d.Actions}}
+  <form method="post" action="/containers/{{$d.Slot}}/{{$c.ID}}/action/{{.Key}}">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$c.Name}}?"{{if .Danger}} data-danger{{end}}>{{.Label}}</button>
+  </form>
+  {{end}}
+{{end}}
+</div>
+
+<nav class="tabs">
+  <a href="?tab=logs" {{if eq $d.Tab "logs"}}aria-current="page"{{end}}>Logs</a>
+  <a href="?tab=shell" {{if eq $d.Tab "shell"}}aria-current="page"{{end}}>Shell</a>
+  <a href="?tab=inspect" {{if eq $d.Tab "inspect"}}aria-current="page"{{end}}>Inspect</a>
+</nav>
+
+{{if eq $d.Tab "logs"}}
+{{template "logs" (printf "/containers/%s/%s/logs/ws" $d.Slot $c.ID)}}
+{{else if eq $d.Tab "shell"}}
+{{if $c.Running}}
+<section class="shell" data-shell="/containers/{{$d.Slot}}/{{$c.ID}}/shell/ws">
+  <div class="logs-bar">
+    <label class="inline">Command <input name="cmd" class="mono" placeholder="bash, falling back to sh"></label>
+    <label class="inline">User <input name="user" class="mono short" placeholder="default"></label>
+    <button type="button" class="primary" data-shell-connect>Connect</button>
+    <button type="button" data-shell-disconnect hidden>Disconnect</button>
+    <span class="shell-status muted"></span>
+  </div>
+  <div class="terminal"></div>
+</section>
+<p class="muted">The command is split on spaces, not run through a shell. Every session goes in the action log, without what you type.</p>
+{{else}}<p class="muted">The container is not running.</p>{{end}}
+{{else}}
+<details open><summary>docker inspect {{$c.Name}}</summary><pre class="code mono">{{$c.Raw}}</pre></details>
+{{end}}
+{{end}}

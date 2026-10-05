@@ -2,6 +2,7 @@
 // esbuild into web/static/dist/app.js. No inline scripts anywhere, so the
 // CSP can stay at script-src 'self'.
 import htmx from "htmx.org";
+import { setupLogs } from "./logs.js";
 
 window.htmx = htmx;
 
@@ -58,14 +59,25 @@ document.addEventListener("click", (e) => {
     .forEach((r) => body.appendChild(r));
 });
 
-// Search boxes with data-filter="#table" hide rows that don't match.
-document.addEventListener("input", (e) => {
-  const sel = e.target.dataset && e.target.dataset.filter;
-  if (!sel) return;
-  const q = e.target.value.trim().toLowerCase();
+// Table filters: a search box with data-filter="#table" matches row text;
+// selects with data-col-filter="#table" data-col="N" match one column.
+function applyFilters(sel) {
+  const box = document.querySelector(`input[data-filter="${sel}"]`);
+  const q = box ? box.value.trim().toLowerCase() : "";
+  const cols = [...document.querySelectorAll(`select[data-col-filter="${sel}"]`)].filter((s) => s.value);
   document.querySelectorAll(sel + " tbody tr").forEach((r) => {
-    r.hidden = q !== "" && !r.textContent.toLowerCase().includes(q);
+    let show = q === "" || r.textContent.toLowerCase().includes(q);
+    for (const s of cols) {
+      const cell = r.children[+s.dataset.col];
+      const v = cell ? (cell.dataset.value ?? cell.textContent.trim()) : "";
+      if (v !== s.value) show = false;
+    }
+    r.hidden = !show;
   });
+}
+document.addEventListener("input", (e) => {
+  const sel = e.target.dataset && (e.target.dataset.filter || e.target.dataset.colFilter);
+  if (sel) applyFilters(sel);
 });
 
 // "/" focuses the search box on any list page.
@@ -73,7 +85,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
-  const box = document.querySelector("input[data-filter]");
+  const box = document.querySelector("input[data-filter], input[data-logs-filter]");
   if (box) {
     e.preventDefault();
     box.focus();
@@ -134,3 +146,5 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && e.target.classList && e.target.classList.contains("secret")) e.target.classList.add("shown");
 });
+
+for (const el of document.querySelectorAll("[data-logs]")) setupLogs(el);

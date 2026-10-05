@@ -6,16 +6,19 @@ It replaces the parts of Portainer CE that actually get used: stacks, containers
 
 ## Status
 
-This is phase 2 of 11. What works right now:
+This is phase 3 of 11. What works right now:
 
 - First-run setup, login, sessions, "log out everywhere", password change.
 - Settings: stack root, ignored folders, Docker and Podman endpoints with a Test button.
 - The stack list: every folder under the root with a compose file, plus every running Compose project the engines report.
 - Stacks: create, edit with a side-by-side diff, Deploy, Update, Restart, Recreate, Start, Stop and Down, each with live output in the browser.
 - Manage: one click turns an On disk folder into a managed stack.
-- The action log: every command Fleetling ran and every file it wrote, kept for 90 days.
+- Containers: list with stack and state filters, Start, Stop, Restart, Kill, Remove, and Recreate for containers in a managed stack.
+- Logs for one container or a whole stack, with follow, tail, since, timestamps, a filter, wrap and download.
+- A web shell into any running container, plus Inspect and live CPU, memory and network stats.
+- The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 
-Containers, logs and the web shell arrive in phase 3. The full plan is in the build spec.
+Images, networks, volumes and the Portainer importer arrive in phase 4. The full plan is in the build spec.
 
 ## Prerequisites
 
@@ -145,6 +148,16 @@ A few things worth knowing:
 - On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what the "remove with folders" option in phase 6 cleans up.
 - If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. The container can read `.env` and edit the compose file. Most apps never touch them, so it's a heads-up, not a block.
 - Fleetling's own stack can be edited but not deployed, stopped or restarted from inside. The process would die halfway through. Self-updates arrive in phase 7; until then, update it from the host.
+
+## Containers, logs and the shell
+
+Container actions go through the Engine API, the same calls `docker stop` and friends make. The confirm shows the equivalent command, like `docker rm -f gitea`, and that line goes in the action log. Remove is `rm -f`: it stops the container and deletes it, and never touches named volumes or anything on disk. Recreate on a container in a managed stack runs `docker compose ... up -d --force-recreate --no-deps <service>`, so it picks up compose file changes the way Compose would.
+
+Logs keep their colors. Containers without a TTY send stdout and stderr interleaved with 8-byte frame headers; Fleetling splits those properly, and stderr lines show in red. The stack Logs tab runs `docker compose logs`, so every line carries its service name. Following stops the moment you leave the page.
+
+The shell starts `/bin/bash` if the image has it and `/bin/sh` if not, in one exec. Set Command to run something else (it's split on spaces, not run through a shell) and User to run as someone other than the image default. Resizing the browser resizes the terminal. Distroless and scratch images have no shell at all, and the terminal says so instead of hanging. Each session goes in the action log as `docker exec -it ...` with its exit code. What you type is never logged.
+
+Fleetling's own container can't be stopped, restarted, killed or removed from its own page. Logs, shell and inspect work.
 
 ## How stacks are listed
 

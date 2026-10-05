@@ -1,0 +1,17 @@
+{{define "logs"}}
+<section class="logs" data-logs="{{.}}">
+  <div class="logs-bar">
+    <label class="inline">Tail
+      <select name="tail"><option>100</option><option>500</option><option>1000</option><option value="all">all</option></select>
+    </label>
+    <label class="inline">Since <input name="since" class="mono short" placeholder="10m, 2h"></label>
+    <label class="check"><input type="checkbox" name="follow" checked> Follow</label>
+    <label class="check"><input type="checkbox" name="timestamps"> Timestamps</label>
+    <label class="check"><input type="checkbox" name="wrap" checked> Wrap</label>
+    <input type="search" name="filter" class="short" placeholder="Filter  /" data-logs-filter>
+    <button type="button" data-logs-download>Download</button>
+    <span class="logs-status muted"></span>
+  </div>
+  <div class="logs-out mono wrap"></div>
+</section>
+{{end}}

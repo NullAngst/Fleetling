@@ -44,6 +44,7 @@
   <a href="?tab=compose" {{if eq $d.Tab "compose"}}aria-current="page"{{end}}>Compose</a>
   <a href="?tab=env" {{if eq $d.Tab "env"}}aria-current="page"{{end}}>Env</a>
   <a href="?tab=services" {{if eq $d.Tab "services"}}aria-current="page"{{end}}>Services</a>
+  {{if $d.Folder.Meta}}<a href="?tab=logs" {{if eq $d.Tab "logs"}}aria-current="page"{{end}}>Logs</a>{{end}}
   <a href="?tab=history" {{if eq $d.Tab "history"}}aria-current="page"{{end}}>History</a>
 </nav>
 
@@ -55,6 +56,8 @@
 {{end}}</pre>
   <p class="muted">Values for keys containing PASS, SECRET, TOKEN or KEY are blurred until clicked.</p>
   {{else}}<p class="muted">No .env file.</p>{{end}}
+{{else if eq $d.Tab "logs"}}
+{{template "logs" (printf "/stacks/%s/logs/ws" $d.Folder.Name)}}
 {{else if eq $d.Tab "services"}}
 <div class="table-wrap">
 <table class="list">

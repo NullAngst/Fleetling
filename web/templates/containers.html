@@ -1,0 +1,35 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <h1>Containers</h1>
+  <div class="actions">
+    {{if gt (len $d.Slots) 1}}<nav class="switch">{{range $d.Slots}}<a href="/containers?engine={{.}}" {{if eq . $d.Slot}}aria-current="page"{{end}}>{{.}}</a>{{end}}</nav>{{end}}
+    <select data-col-filter="#containers" data-col="1" aria-label="Stack">
+      <option value="">All stacks</option>
+      {{range $d.Projects}}<option>{{.}}</option>{{end}}
+    </select>
+    <select data-col-filter="#containers" data-col="3" aria-label="State">
+      <option value="">All states</option><option>running</option><option>exited</option><option>restarting</option><option>paused</option><option>created</option>
+    </select>
+    <input type="search" class="search" placeholder="Search  /" data-filter="#containers" aria-label="Search containers">
+  </div>
+</header>
+{{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
+<div class="table-wrap">
+<table id="containers" class="list">
+  <thead><tr><th data-sort="text">Name</th><th data-sort="text">Stack</th><th data-sort="text">Image</th><th data-sort="text">State</th><th>Ports</th><th data-sort="text">Uptime</th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+    <tr>
+      <td data-label="Name"><a class="mono" href="/containers/{{$d.Slot}}/{{.ID}}">{{.Name}}</a></td>
+      <td data-label="Stack" data-value="{{.Project}}" class="mono">{{.Project}}</td>
+      <td data-label="Image" class="mono">{{.Image}}</td>
+      <td data-label="State" data-value="{{.State}}"><span class="dot dot-{{if eq .State "running"}}{{if eq .Health "unhealthy"}}partial{{else}}ok{{end}}{{else}}stopped{{end}}"></span>{{.State}}{{if .Health}} <span class="muted">({{.Health}})</span>{{end}}</td>
+      <td data-label="Ports" class="mono">{{join .Ports ", "}}</td>
+      <td data-label="Uptime" class="muted">{{.Status}}</td>
+    </tr>
+  {{else}}<tr><td colspan="6" class="muted">No containers.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

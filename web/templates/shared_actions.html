@@ -1,12 +1,12 @@
 {{define "action_rows"}}
 <div class="table-wrap">
 <table class="list">
-  <thead><tr><th>Time</th><th>Stack</th><th>Command</th><th>Exit</th></tr></thead>
+  <thead><tr><th>Time</th><th>Target</th><th>Command</th><th>Exit</th></tr></thead>
   <tbody>
   {{range .}}
     <tr>
       <td data-label="Time" class="mono nowrap">{{.Started.Format "2006-01-02 15:04:05"}}</td>
-      <td data-label="Stack"><a class="mono" href="/stacks/{{.Target}}">{{.Target}}</a></td>
+      <td data-label="Target">{{if hasPrefix .Target "container/"}}<span class="mono">{{.Target}}</span>{{else}}<a class="mono" href="/stacks/{{.Target}}">{{.Target}}</a>{{end}}</td>
       <td data-label="Command">
         <details>
           <summary class="mono">{{.Command}}</summary>

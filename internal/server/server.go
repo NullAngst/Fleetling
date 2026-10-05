@@ -40,6 +40,16 @@ type Engine interface {
 	ComposeContainers(ctx context.Context, slot string) ([]compose.Container, error)
 	ContainerMounts(ctx context.Context, id string) ([]compose.Mount, error)
 	ContainerLabels(ctx context.Context, id string) (map[string]string, error)
+	Containers(ctx context.Context) ([]engine.ContainerRow, error)
+	Inspect(ctx context.Context, id string) (engine.Detail, error)
+	Start(ctx context.Context, id string) error
+	Stop(ctx context.Context, id string) error
+	Restart(ctx context.Context, id string) error
+	Kill(ctx context.Context, id string) error
+	Remove(ctx context.Context, id string) error
+	Logs(ctx context.Context, id string, tty bool, o engine.LogOptions, emit func(stderr bool, line string)) error
+	Stats(ctx context.Context, id string) (engine.Stats, error)
+	Shell(ctx context.Context, id string, cmd []string, user string, cols, rows uint) (*engine.Exec, error)
 	Close() error
 }
 
@@ -173,6 +183,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /stacks/{folder}/action/{action}", s.requireAuth(s.stackAction))
 	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
 	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))
+	mux.HandleFunc("GET /stacks/{folder}/logs/ws", s.requireAuth(s.stackLogsSocket))
+	mux.HandleFunc("GET /containers", s.requireAuth(s.containersPage))
+	mux.HandleFunc("GET /containers/{slot}/{id}", s.requireAuth(s.containerPage))
+	mux.HandleFunc("GET /containers/{slot}/{id}/stats", s.requireAuth(s.containerStats))
+	mux.HandleFunc("POST /containers/{slot}/{id}/action/{action}", s.requireAuth(s.containerAction))
+	mux.HandleFunc("GET /containers/{slot}/{id}/logs/ws", s.requireAuth(s.containerLogsSocket))
+	mux.HandleFunc("GET /containers/{slot}/{id}/shell/ws", s.requireAuth(s.shellSocket))
 	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
 	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
 	mux.HandleFunc("POST /settings/test", s.requireAuth(s.engineTest))
