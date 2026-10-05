@@ -1,0 +1,31 @@
+{{define "content"}}
+<h1>Import from Portainer</h1>
+<p>Reads each compose stack out of Portainer and writes it to a folder under <span class="mono">{{.Data.Root}}</span>. Nothing is redeployed: the running containers are picked up by project name, which stays exactly the Portainer stack name. You get a preview before anything is written.</p>
+
+<form method="post" action="/import/connect" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Connect to Portainer's API</h2>
+  <label>Portainer URL <input name="url" class="mono" placeholder="https://192.168.1.10:9443" required></label>
+  <label>API token
+    <input name="api_key" class="mono" type="password" autocomplete="off">
+    <small>Make one in Portainer under My account, Access tokens. Or leave it empty and use a username and password.</small>
+  </label>
+  <div class="field-row">
+    <label>Username <input name="username" autocomplete="off"></label>
+    <label>Password <input name="password" type="password" autocomplete="off"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="skip_tls" value="1" checked> Skip TLS verify (Portainer ships a self-signed certificate)</label>
+  <p class="muted">Credentials stay in memory for this import only. They are never written to disk, and a restart forgets them.</p>
+  <button type="submit" class="primary">Connect</button>
+</form>
+
+<form method="post" action="/import/offline" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <h2>Offline, from Portainer's data folder</h2>
+  <p class="muted">For when the API is unreachable or the password is lost. Reads <span class="mono">compose/&lt;id&gt;/docker-compose.yml</span> and maps each ID to its project through the running containers. Env vars are read from <span class="mono">stack.env</span> when Portainer left one, and otherwise offered as suggestions you confirm one by one.</p>
+  <label>Portainer data folder <input name="data_path" class="mono" value="{{.Data.DataPath}}" required></label>
+  <button type="submit">Read the data folder</button>
+</form>
+
+{{template "retire" (dict "CSRF" .CSRF "P" .Data.Portainer)}}
+{{end}}

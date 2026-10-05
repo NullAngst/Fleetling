@@ -31,6 +31,13 @@ type Container struct {
 	Logs    []Line // sent on every logs request
 	Follow  []Line // sent 50ms later when following
 	NoShell bool   // exec fails like a distroless image
+	Env     []string
+	Mounts  []Mount
+}
+
+// Mount is a bind mount on a fake container.
+type Mount struct {
+	Source, Destination string
 }
 
 // Line is one log line.
@@ -42,6 +49,9 @@ type Line struct {
 // Engine is the fake.
 type Engine struct {
 	Socket string
+
+	// ImageEnv maps an image reference to the Env baked into it.
+	ImageEnv map[string][]string
 
 	mu         sync.Mutex
 	containers map[string]*Container
@@ -73,13 +83,20 @@ func Start(containers ...*Container) (*Engine, error) {
 		os.RemoveAll(dir)
 		return nil, err
 	}
-	e := &Engine{Socket: sock, dir: dir, containers: map[string]*Container{}, execs: map[string]*exec{}}
+	e := &Engine{Socket: sock, dir: dir, containers: map[string]*Container{}, execs: map[string]*exec{}, ImageEnv: map[string][]string{}}
 	for _, c := range containers {
 		e.containers[c.ID] = c
 	}
 	e.srv = &http.Server{Handler: http.HandlerFunc(e.serve)}
 	go e.srv.Serve(l)
 	return e, nil
+}
+
+// Add puts another container on the fake.
+func (e *Engine) Add(c *Container) {
+	e.mu.Lock()
+	e.containers[c.ID] = c
+	e.mu.Unlock()
 }
 
 // Close stops the fake.
@@ -155,6 +172,17 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.container(w, r, c, parts[2:], j)
+	case len(parts) >= 3 && parts[0] == "images" && parts[len(parts)-1] == "json":
+		ref := strings.Join(parts[1:len(parts)-1], "/")
+		e.mu.Lock()
+		env, ok := e.ImageEnv[ref]
+		e.mu.Unlock()
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			j(map[string]string{"message": "No such image: " + ref})
+			return
+		}
+		j(map[string]any{"Id": "sha256:" + strings.Repeat("e", 64), "RepoTags": []string{ref}, "Config": map[string]any{"Env": env}})
 	case len(parts) == 3 && parts[0] == "exec":
 		e.execCall(w, r, parts[1], parts[2], j)
 	default:
@@ -188,9 +216,13 @@ func (e *Engine) container(w http.ResponseWriter, r *http.Request, c *Container,
 		if c.Running {
 			status = "running"
 		}
+		mounts := []map[string]any{}
+		for _, m := range c.Mounts {
+			mounts = append(mounts, map[string]any{"Type": "bind", "Source": m.Source, "Destination": m.Destination, "RW": true})
+		}
 		j(map[string]any{"Id": c.ID, "Name": "/" + c.Name, "Image": "sha256:abc",
 			"State":  map[string]any{"Status": status, "Running": c.Running, "StartedAt": "2026-10-04T12:00:00Z"},
-			"Config": map[string]any{"Image": c.Image, "Tty": c.Tty, "Labels": c.Labels}, "Mounts": []any{}})
+			"Config": map[string]any{"Image": c.Image, "Tty": c.Tty, "Labels": c.Labels, "Env": c.Env}, "Mounts": mounts})
 	case "start", "stop", "restart", "kill":
 		e.record(r, c, what)
 		e.mu.Lock()

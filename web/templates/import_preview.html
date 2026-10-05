@@ -1,0 +1,67 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Import preview</h1>
+<p>{{if $d.Offline}}From <span class="mono">{{$d.DataPath}}</span>.{{else}}From Portainer's API.{{end}} Nothing has been written yet. Untick a stack to leave it in Portainer, and change a folder if the guess is wrong.</p>
+<form method="post" action="/import/apply" class="form editor-form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <div class="table-wrap">
+  <table class="list">
+    <thead><tr><th>Import</th><th>Portainer stack</th><th>Project</th><th>Folder under {{$d.Root}}</th><th>Env vars</th><th>Containers</th><th>Notes</th></tr></thead>
+    <tbody>
+    {{range $d.Cands}}
+      <tr>
+        <td data-label="Import">{{if .Skip}}<span class="muted">skipped</span>{{else}}<input type="checkbox" name="include_{{.Key}}" value="1" {{if not .Conflict}}checked{{end}} aria-label="Import {{.Name}}">{{end}}</td>
+        <td data-label="Stack" class="mono">{{.Name}}{{if .PortainerID}} <span class="muted">#{{.PortainerID}}</span>{{end}}</td>
+        <td data-label="Project" class="mono">{{if not .Skip}}{{.Name}}{{end}}</td>
+        <td data-label="Folder">{{if not .Skip}}<input name="folder_{{.Key}}" class="mono short" value="{{.Folder}}">{{if .Conflict}}<div class="warn">already holds a stack</div>{{end}}{{end}}</td>
+        <td data-label="Env" class="mono">{{if not .Skip}}{{if .Suggestions}}{{len .Suggestions}} to review{{else}}{{len .Env}}{{end}}{{if .StackEnv}} <span class="muted">stack.env</span>{{end}}{{end}}</td>
+        <td data-label="Containers" class="mono">{{if not .Skip}}{{.Running}}/{{.Containers}} running{{end}}</td>
+        <td data-label="Notes">{{if .Skip}}<span class="muted">{{.Skip}}</span>{{end}}{{range .Warnings}}<div class="warn">{{.}}</div>{{end}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  </div>
+
+  {{range $d.Cands}}{{if and (not .Skip) (or .Fixes .Suggestions)}}
+  <section class="import-detail">
+    <h2 class="mono">{{.Name}}</h2>
+    {{if .Fixes}}
+    <p>Portainer resolved these relative paths against its own folder. The running containers use the absolute paths on the right. Rewriting them keeps the stack pointed at the same data after it moves.</p>
+    {{template "diff" .Diff}}
+    <label class="check"><input type="checkbox" name="fix_{{.Key}}" value="1" checked> Rewrite {{len .Fixes}} relative path{{if gt (len .Fixes) 1}}s{{end}}</label>
+    {{end}}
+    {{if .Suggestions}}
+    <p>Variables set on the containers but not in their images. Some of these came from <span class="mono">environment:</span> in the compose file and don't belong in .env.</p>
+    {{$key := .Key}}
+    {{range $i, $s := .Suggestions}}
+      <label class="check mono"><input type="checkbox" name="env_{{$key}}_{{$i}}" value="1"{{if not $s.FromCompose}} checked{{end}}> {{$s.KV}}{{if $s.FromCompose}} <span class="muted">(also set in the compose file)</span>{{end}}</label>
+    {{end}}
+    {{end}}
+  </section>
+  {{end}}{{end}}
+
+  <div class="actions">
+    <button type="submit" class="primary">Write the ticked stacks</button>
+  </div>
+</form>
+<form method="post" action="/import/reset">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <button type="submit" class="link">Start over</button>
+</form>
+{{end}}
+
+{{define "diff"}}
+<div class="table-wrap">
+<table class="diff mono">
+  <tbody>
+  {{range .}}{{if ne .Kind "same"}}
+  <tr class="d-{{.Kind}}">
+    <td class="ln">{{if .LeftNo}}{{.LeftNo}}{{end}}</td><td class="l">{{.Left}}</td>
+    <td class="ln">{{if .RightNo}}{{.RightNo}}{{end}}</td><td class="r">{{.Right}}</td>
+  </tr>
+  {{end}}{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

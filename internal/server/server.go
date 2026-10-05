@@ -50,6 +50,7 @@ type Engine interface {
 	Logs(ctx context.Context, id string, tty bool, o engine.LogOptions, emit func(stderr bool, line string)) error
 	Stats(ctx context.Context, id string) (engine.Stats, error)
 	Shell(ctx context.Context, id string, cmd []string, user string, cols, rows uint) (*engine.Exec, error)
+	ImageEnv(ctx context.Context, ref string) ([]string, error)
 	Close() error
 }
 
@@ -70,6 +71,8 @@ type Server struct {
 	inContainer func() bool
 	selfIDs     func() []string
 	now         func() time.Time
+
+	imp importState
 
 	mu         sync.RWMutex
 	secret     []byte
@@ -184,6 +187,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
 	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))
 	mux.HandleFunc("GET /stacks/{folder}/logs/ws", s.requireAuth(s.stackLogsSocket))
+	mux.HandleFunc("GET /import", s.requireAuth(s.importPage))
+	mux.HandleFunc("POST /import/connect", s.requireAuth(s.importConnect))
+	mux.HandleFunc("POST /import/endpoint", s.requireAuth(s.importEndpoint))
+	mux.HandleFunc("POST /import/offline", s.requireAuth(s.importOffline))
+	mux.HandleFunc("POST /import/apply", s.requireAuth(s.importApply))
+	mux.HandleFunc("POST /import/reset", s.requireAuth(s.importReset))
+	mux.HandleFunc("POST /import/retire", s.requireAuth(s.importRetire))
 	mux.HandleFunc("GET /containers", s.requireAuth(s.containersPage))
 	mux.HandleFunc("GET /containers/{slot}/{id}", s.requireAuth(s.containerPage))
 	mux.HandleFunc("GET /containers/{slot}/{id}/stats", s.requireAuth(s.containerStats))

@@ -17,6 +17,8 @@ import (
 	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/NullAngst/Fleetling/internal/compose"
 )
 
 // ContainerRow is one line on the containers page.
@@ -101,7 +103,9 @@ type Detail struct {
 	Tty       bool
 	StartedAt string
 	ExitCode  int
-	Raw       string // indented JSON for the Inspect tab
+	Mounts    []compose.Mount
+	Env       []string // Config.Env, KEY=value
+	Raw       string   // indented JSON for the Inspect tab
 }
 
 // Inspect reads one container.
@@ -119,6 +123,10 @@ func (e *Client) Inspect(ctx context.Context, id string) (Detail, error) {
 		d.Image = c.Config.Image
 		d.Tty = c.Config.Tty
 		d.Project, d.Service, d.WorkDir = c.Config.Labels[LabelProject], c.Config.Labels[LabelService], c.Config.Labels[LabelWorkingDir]
+		d.Env = c.Config.Env
+	}
+	for _, m := range c.Mounts {
+		d.Mounts = append(d.Mounts, compose.Mount{Type: string(m.Type), Source: m.Source, Destination: m.Destination})
 	}
 	if c.State != nil {
 		d.Running = c.State.Running
@@ -136,6 +144,18 @@ func (e *Client) Inspect(ctx context.Context, id string) (Detail, error) {
 		d.Raw = string(res.Raw)
 	}
 	return d, nil
+}
+
+// ImageEnv returns the Env baked into an image, KEY=value.
+func (e *Client) ImageEnv(ctx context.Context, ref string) ([]string, error) {
+	res, err := e.c.ImageInspect(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	if res.Config == nil {
+		return nil, nil
+	}
+	return res.Config.Env, nil
 }
 
 // Start, Stop, Restart, Kill and Remove act on one container through the

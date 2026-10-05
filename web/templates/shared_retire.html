@@ -1,0 +1,12 @@
+{{define "retire"}}
+<h2>Retire Portainer</h2>
+{{with .P}}{{if .ID}}
+<p>Found <span class="mono">{{.Name}}</span> running <span class="mono">{{.Image}}</span>. This stops and removes that one container. Its data folder or volume stays, so you can bring it back.</p>
+<form method="post" action="/import/retire">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <button type="submit" data-command="{{.Command}}" data-title="Stop and remove the Portainer container?" data-danger>Retire Portainer</button>
+</form>
+<p class="notice-line">Do not remove stacks inside Portainer to clean up. Removing a stack there runs <span class="mono">docker compose down</span> and deletes its containers, including the ones Fleetling now manages.</p>
+{{else if .Err}}<p class="muted">Could not look for the Portainer container: {{.Err}}</p>
+{{else}}<p class="muted">No Portainer container is running.</p>{{end}}{{end}}
+{{end}}

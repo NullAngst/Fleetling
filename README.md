@@ -6,7 +6,7 @@ It replaces the parts of Portainer CE that actually get used: stacks, containers
 
 ## Status
 
-This is phase 3 of 11. What works right now:
+This is phase 4 of 11. What works right now:
 
 - First-run setup, login, sessions, "log out everywhere", password change.
 - Settings: stack root, ignored folders, Docker and Podman endpoints with a Test button.
@@ -16,9 +16,10 @@ This is phase 3 of 11. What works right now:
 - Containers: list with stack and state filters, Start, Stop, Restart, Kill, Remove, and Recreate for containers in a managed stack.
 - Logs for one container or a whole stack, with follow, tail, since, timestamps, a filter, wrap and download.
 - A web shell into any running container, plus Inspect and live CPU, memory and network stats.
+- The Portainer importer, through Portainer's API or straight from its data folder, plus a button to retire Portainer afterwards.
 - The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 
-Images, networks, volumes and the Portainer importer arrive in phase 4. The full plan is in the build spec.
+The full networks page, images and volumes arrive in phase 5. The full plan is in the build spec.
 
 ## Prerequisites
 
@@ -95,9 +96,26 @@ The proxy also needs to pass the original `Host` header, which most do by defaul
 
 ## Coming from Portainer
 
-The importer arrives in phase 4. It reads each stack's compose text and env vars through Portainer's API, writes them into `/opt/<folder>`, and picks up the running containers by project name with zero restarts.
+Open Import in the sidebar. Nothing is redeployed: the importer writes files, and the running containers are picked up by project name, which stays exactly the Portainer stack name.
 
-Until then, your Portainer stacks show up in Fleetling as External, and nothing about them changes. Do not remove stacks inside Portainer to "clean up". That runs `down` and deletes their containers.
+1. Make an API token in Portainer under My account, Access tokens. A username and password work too.
+2. Enter Portainer's URL, like `https://192.168.1.10:9443`, and the token. Leave Skip TLS verify ticked, since Portainer ships a self-signed certificate. The credentials stay in memory for that import only and never touch the disk.
+3. Check the preview. For each compose stack it shows the project name, the folder it will go in, the env var count and any warnings. Swarm and Kubernetes stacks are listed as skipped. Stacks deployed from git are flagged, and the repo URL lands in `.fleetling.toml`.
+4. Fix any folder the guess got wrong. The guess is the `/opt/<folder>` the compose file mounts most; a tie or no match falls back to the stack name and says so. A folder that already holds a stack is refused.
+5. Approve the relative-path rewrites, if any are listed. Portainer resolved `./data` against its own folder, so the running container really uses something like `/opt/portainer/compose/3/data`. The preview shows that diff, and the rewrite keeps the stack pointed at the same data once it moves.
+6. Write. Each stack gets `compose.yaml` exactly as Portainer returned it, `.env` from Portainer's env vars at mode 600, and `.fleetling.toml`. If the compose file reads Portainer's `stack.env`, the vars go there and `.env` becomes a symlink to it, since Compose only reads `.env` for `${VARIABLE}` interpolation.
+7. Check the result page. Every imported stack should show Running with no deploy. One that says the project name didn't match means its containers are still External: stop and look before going further.
+8. Retire Portainer from the same page. It stops and removes the Portainer container only. Its data stays, so you can bring it back.
+
+DO NOT REMOVE STACKS INSIDE PORTAINER TO CLEAN UP. That runs `docker compose down` and deletes their containers, which are now Fleetling's.
+
+### Offline import
+
+If Portainer's API is down or the password is gone, point the offline import at Portainer's data folder (default `/opt/portainer`). It has to be visible inside the Fleetling container at the same path, which it is if it sits under the root. It reads `compose/<id>/docker-compose.yml` and maps each ID to a project through the running containers' `working_dir` label. A stack with no container pointing at it is skipped, never guessed.
+
+Env vars come from `stack.env` when Portainer left one. Otherwise they can't be recovered exactly, so the preview lists every variable set on the containers that their images didn't set, and you tick the ones that belong in `.env`. Anything also set under `environment:` in the compose file starts unticked, since it probably came from there.
+
+Networks need nothing; Portainer created them in Docker, so they already exist. Portainer-only data like access control and templates is dropped.
 
 ## Updating
 

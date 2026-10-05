@@ -30,8 +30,15 @@ var funcs = template.FuncMap{
 	"sub":       func(a, b int) int { return a - b },
 	"deref":     func(p *int) int { return *p },
 	"hasPrefix": strings.HasPrefix,
-	"bytes":     humanBytes,
-	"pct":       func(f float64) string { return fmt.Sprintf("%.1f%%", f) },
+	"dict": func(kv ...any) map[string]any {
+		m := map[string]any{}
+		for i := 0; i+1 < len(kv); i += 2 {
+			m[kv[i].(string)] = kv[i+1]
+		}
+		return m
+	},
+	"bytes": humanBytes,
+	"pct":   func(f float64) string { return fmt.Sprintf("%.1f%%", f) },
 }
 
 // loadTemplates parses each page together with layout.html, and each

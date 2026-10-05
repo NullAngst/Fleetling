@@ -1,0 +1,20 @@
+{{define "content"}}
+<h1>Import finished</h1>
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Stack</th><th>Folder</th><th>Status now</th><th>Notes</th></tr></thead>
+  <tbody>
+  {{range .Data.Results}}
+    <tr>
+      <td data-label="Stack"><a class="mono" href="/stacks/{{.Folder}}">{{.Name}}</a></td>
+      <td data-label="Folder" class="mono">{{.Folder}}</td>
+      <td data-label="Status"><span class="dot dot-{{if .OK}}ok{{else}}partial{{end}}"></span>{{.Status}}</td>
+      <td data-label="Notes">{{if .Note}}<span class="warn">{{.Note}}</span>{{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted">Nothing was redeployed. A stack that was stopped in Portainer shows Stopped here, and that is expected.</p>
+{{template "retire" (dict "CSRF" .CSRF "P" .Data.Portainer)}}
+{{end}}

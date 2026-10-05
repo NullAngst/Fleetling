@@ -1,0 +1,11 @@
+{{define "content"}}
+<h1>Pick the environment</h1>
+<form method="post" action="/import/endpoint" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  {{range .Data.Endpoints}}
+  <label class="check"><input type="radio" name="endpoint" value="{{.ID}}" {{if eq .ID $.Data.Selected}}checked{{end}}> <span class="mono">{{.Name}}</span> <span class="muted">{{.URL}}</span></label>
+  {{end}}
+  <p class="muted">Pick the local Docker socket environment. Its stacks are the ones running on this server.</p>
+  <button type="submit" class="primary">List stacks</button>
+</form>
+{{end}}
