@@ -14,6 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # No job here needs to push with git, so keep the token out of
+          # .git/config where any build or test step could read it.
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -22,7 +26,7 @@ jobs:
           node-version: lts/*
       - name: Build web assets
         working-directory: web/src
-        run: npm ci && npm run build
+        run: npm ci --ignore-scripts && npm run build
       - name: Module files
         run: |
           if [ -f go.sum ]; then
@@ -43,6 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # No job here needs to push with git, so keep the token out of
+          # .git/config where any build or test step could read it.
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -68,6 +76,10 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # No job here needs to push with git, so keep the token out of
+          # .git/config where any build or test step could read it.
+          persist-credentials: false
       - uses: actions/setup-go@v7
         with:
           go-version: stable
@@ -76,7 +88,7 @@ jobs:
           node-version: lts/*
       - name: Build web assets
         working-directory: web/src
-        run: npm ci && npm run build
+        run: npm ci --ignore-scripts && npm run build
       - name: Module files
         run: if [ ! -f go.sum ]; then go mod tidy; fi
       - name: Build static binaries
@@ -88,6 +100,8 @@ jobs:
               -o dist/fleetling-linux-$arch ./cmd/fleetling
           done
           cd dist && sha256sum fleetling-* > SHA256SUMS
-      - uses: softprops/action-gh-release@v3
+      # Third-party action pinned to a commit; a moved tag can't swap the
+      # code that holds this job's write token. v3.0.3.
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           files: dist/*
