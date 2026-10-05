@@ -448,3 +448,33 @@ func TestClientAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestLimiterKeyGroupsIPv6By64(t *testing.T) {
+	h := newHarness(t)
+	key := func(remote string) string {
+		r := httptest.NewRequest("POST", "/login", nil)
+		r.RemoteAddr = remote
+		return h.s.limiterKey(r)
+	}
+	if a, b := key("[2001:db8:1:2::1]:5000"), key("[2001:db8:1:2:ffff::9]:5001"); a != b || a != "2001:db8:1:2::/64" {
+		t.Errorf("same /64 got different keys: %s %s", a, b)
+	}
+	if key("[2001:db8:1:3::1]:1") == key("[2001:db8:1:2::1]:1") {
+		t.Error("different /64s share a key")
+	}
+	if got := key("192.168.1.50:4000"); got != "192.168.1.50" {
+		t.Errorf("IPv4 key %s", got)
+	}
+}
+
+func TestPreauthBodyIsCapped(t *testing.T) {
+	h := newHarness(t)
+	h.setUp(h.browser())
+	b := h.browser()
+	tok := b.token("/login")
+	big := url.Values{"csrf": {tok}, "password": {strings.Repeat("a", 1<<20)}}
+	w := b.do("POST", "/login", big, nil)
+	if w.Code == http.StatusSeeOther || w.Code == http.StatusOK {
+		t.Errorf("1 MiB login body accepted: %d", w.Code)
+	}
+}

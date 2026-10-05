@@ -2,6 +2,7 @@ package portainer
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -170,14 +171,21 @@ func ApplyFixes(composeText string, fixes []Fix) (string, error) {
 	return strings.Join(lines, ""), nil
 }
 
+var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`)
+
 // EnvText renders Portainer's env pairs the way Portainer itself writes
 // stack.env: one raw NAME=value per line, so Compose reads them exactly as
 // it did under Portainer. A value with a newline can't be written that way
-// and is reported.
+// and is reported, and so is a name that isn't a plain variable name: a
+// name with a line break in it would otherwise write extra lines.
 func EnvText(pairs []Pair) (string, []string) {
 	var b strings.Builder
 	var problems []string
 	for _, p := range pairs {
+		if !envNameRe.MatchString(p.Name) {
+			problems = append(problems, fmt.Sprintf("%q is not a valid variable name and was left out", p.Name))
+			continue
+		}
 		if strings.ContainsAny(p.Value, "\r\n") {
 			problems = append(problems, p.Name+" holds a line break and was left out; add it by hand")
 			continue
@@ -188,6 +196,17 @@ func EnvText(pairs []Pair) (string, []string) {
 }
 
 var stackEnvRe = regexp.MustCompile(`(?m)(^|[\s"'/-])stack\.env(["'\s]|$)`)
+
+// RedactURL drops any user:password@ part, so a repo URL with a token in it
+// can be recorded in the world-readable .fleetling.toml without the token.
+func RedactURL(s string) string {
+	u, err := url.Parse(s)
+	if err != nil || u.User == nil {
+		return s
+	}
+	u.User = nil
+	return u.String()
+}
 
 // UsesStackEnv reports whether the compose file reads Portainer's stack.env.
 func UsesStackEnv(composeText string) bool { return stackEnvRe.MatchString(composeText) }

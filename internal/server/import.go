@@ -253,8 +253,8 @@ func (s *Server) planFromAPI(w http.ResponseWriter, r *http.Request, x *importSe
 			continue
 		}
 		if ps.GitConfig != nil && ps.GitConfig.URL != "" {
-			c.GitURL = ps.GitConfig.URL
-			c.Warnings = append(c.Warnings, "deployed from git ("+ps.GitConfig.URL+"). The compose file is imported as it is now; Fleetling records the repo but won't pull from it")
+			c.GitURL = portainer.RedactURL(ps.GitConfig.URL)
+			c.Warnings = append(c.Warnings, "deployed from git ("+c.GitURL+"). The compose file is imported as it is now; Fleetling records the repo but won't pull from it")
 		}
 		text, err := x.client.StackFile(ctx, ps.ID)
 		if err != nil {

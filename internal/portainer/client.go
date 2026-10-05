@@ -94,7 +94,17 @@ func Connect(ctx context.Context, o Options) (*Client, error) {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: o.SkipTLSVerify} //nolint:gosec // user's explicit choice, for a self-signed cert on the LAN
 	tr.Proxy = nil                                                        // Portainer is on the LAN; never route it through a proxy from the environment
-	c := &Client{base: u, http: &http.Client{Transport: tr, Timeout: 30 * time.Second}, apiKey: strings.TrimSpace(o.APIKey)}
+	c := &Client{base: u, apiKey: strings.TrimSpace(o.APIKey), http: &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+		// Never follow a redirect. Go copies custom headers like X-API-Key
+		// to any host a redirect names, and re-sends the POST /api/auth
+		// body (the password) on a 307 or 308. Portainer itself never
+		// redirects its API, so a redirect means the URL is wrong.
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return fmt.Errorf("the URL redirected to %s; Portainer's API does not redirect, so enter that address as the URL instead", req.URL.Redacted())
+		},
+	}}
 
 	if c.apiKey == "" {
 		if o.Username == "" || o.Password == "" {

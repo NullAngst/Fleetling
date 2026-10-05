@@ -7,7 +7,10 @@ const MAX_LINES = 20000;
 // ANSI SGR colors to class names. Anything else (cursor moves and such)
 // is dropped. Text always goes in through textContent, never as HTML.
 const SGR = /\x1b\[([0-9;]*)m/g;
-const OTHER_ESC = /\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g;
+// The OSC part is bounded and stops at the next ESC, so a line full of
+// unterminated "ESC ]" sequences can't make each match rescan the rest of
+// the line, which froze the tab on lines a container controls.
+const OTHER_ESC = /\x1b\[[0-9;?]{0,32}[A-Za-z]|\x1b\][^\x07\x1b]{0,512}(?:\x07|\x1b\\)/g;
 
 function renderAnsi(text, into) {
   let state = { fg: null, bold: false };

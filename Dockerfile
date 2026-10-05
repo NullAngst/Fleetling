@@ -8,7 +8,7 @@
 FROM node:lts-alpine AS assets
 WORKDIR /src/web/src
 COPY web/src/package.json web/src/package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY web/src/ ./
 RUN npm run build
 

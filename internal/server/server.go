@@ -414,11 +414,17 @@ func constantEqual(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
-// limiterKey is the client address the login limiter counts against.
+// limiterKey is the client address the login limiter counts against. IPv6
+// clients are counted per /64: one host normally owns a whole /64 and can
+// pick a fresh address for every request, which would make a per-address
+// limit meaningless.
 func (s *Server) limiterKey(r *http.Request) string {
 	a, _ := clientAddr(r, s.cfg.TrustedProxies)
 	if !a.IsValid() {
 		return r.RemoteAddr
+	}
+	if a.Is6() {
+		return netip.PrefixFrom(a, 64).Masked().String()
 	}
 	return a.String()
 }

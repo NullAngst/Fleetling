@@ -30,6 +30,20 @@ type Params struct {
 // DefaultParams is used for every new hash.
 var DefaultParams = Params{Memory: 64 * 1024, Time: 3, Threads: 4, SaltLen: 16, KeyLen: 32}
 
+// argonSlots caps how many argon2 computations run at once. Each one
+// allocates Params.Memory (64 MiB by default), and the login form is
+// reachable without a session, so without a cap a burst of concurrent
+// login posts allocates 64 MiB apiece until the kernel's OOM killer
+// starts picking containers. Two slots keep a real login fast while
+// bounding the worst case at about 128 MiB; extra requests queue.
+var argonSlots = make(chan struct{}, 2)
+
+func idKey(pw, salt []byte, p Params, keyLen uint32) []byte {
+	argonSlots <- struct{}{}
+	defer func() { <-argonSlots }()
+	return argon2.IDKey(pw, salt, p.Time, p.Memory, p.Threads, keyLen)
+}
+
 // ErrMalformedHash means a stored hash could not be parsed.
 var ErrMalformedHash = errors.New("malformed password hash")
 
@@ -56,7 +70,7 @@ func hashWith(pw string, p Params) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := argon2.IDKey([]byte(pw), salt, p.Time, p.Memory, p.Threads, p.KeyLen)
+	key := idKey([]byte(pw), salt, p, p.KeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, p.Memory, p.Time, p.Threads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
@@ -89,6 +103,6 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	if err != nil || len(want) < 16 || len(want) > 128 {
 		return false, ErrMalformedHash
 	}
-	got := argon2.IDKey([]byte(pw), salt, p.Time, p.Memory, p.Threads, uint32(len(want)))
+	got := idKey([]byte(pw), salt, p, uint32(len(want)))
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

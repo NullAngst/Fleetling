@@ -182,3 +182,41 @@ func TestEnvSuggestions(t *testing.T) {
 		t.Errorf("%v", keys)
 	}
 }
+
+func TestRefusesRedirects(t *testing.T) {
+	// A redirect to another host would carry X-API-Key, and a 307 would
+	// re-send the login body with the password.
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("credentials followed a redirect: key=%q", r.Header.Get("X-API-Key"))
+	}))
+	defer evil.Close()
+	redir := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+r.URL.Path, http.StatusTemporaryRedirect)
+	}))
+	defer redir.Close()
+	for _, o := range []Options{{URL: redir.URL, APIKey: "ptr_secret"}, {URL: redir.URL, Username: "admin", Password: "secret"}} {
+		_, err := Connect(context.Background(), o)
+		if err == nil || !strings.Contains(err.Error(), "redirected") {
+			t.Errorf("redirect: %v", err)
+		}
+	}
+}
+
+func TestEnvTextRejectsBadNames(t *testing.T) {
+	text, problems := EnvText([]Pair{{"GOOD", "1"}, {"EVIL\nINJECTED", "x"}, {"", "y"}, {"A=B", "z"}})
+	if text != "GOOD=1\n" || len(problems) != 3 {
+		t.Errorf("%q %v", text, problems)
+	}
+}
+
+func TestRedactURL(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://user:ghp_token@github.com/me/repo.git": "https://github.com/me/repo.git",
+		"https://github.com/me/repo.git":                "https://github.com/me/repo.git",
+		"git@github.com:me/repo.git":                    "git@github.com:me/repo.git",
+	} {
+		if got := RedactURL(in); got != want {
+			t.Errorf("RedactURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

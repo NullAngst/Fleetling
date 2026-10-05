@@ -21,7 +21,12 @@ func (s *Server) setupForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "setup", s.page(r, "First run", "", setupData{Root: s.cfg.DefaultRoot}))
 }
 
+// maxPreauthBody caps the body of the forms reachable without a session.
+// They carry a token, a password and a path; 64 KiB is far more than that.
+const maxPreauthBody = 64 << 10
+
 func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPreauthBody)
 	if !s.checkCSRF(r) {
 		http.Error(w, "missing or stale CSRF token, reload the page", http.StatusForbidden)
 		return
@@ -121,6 +126,7 @@ func (s *Server) loginForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPreauthBody)
 	fail := func(status int, msg string) {
 		p := s.page(r, "Log in", "", nil)
 		p.Error = msg

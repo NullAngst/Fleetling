@@ -82,6 +82,11 @@ ssh -L 8420:localhost:8420 you@server
 
 Then open `http://localhost:8420`.
 
+Two things that catch people out:
+
+- Docker publishes ports by writing its own iptables rules, and those skip UFW entirely. A `ufw deny 8420` does nothing for `"8420:8420"`. If your reverse proxy runs on the same host (NPMPlus with `network_mode: host` does), publish the port on loopback only, `"127.0.0.1:8420:8420"`, and point the proxy at `127.0.0.1:8420`. Then nothing but the proxy can reach Fleetling.
+- On plain `http://server:8420`, the password and the session cookie cross your LAN in cleartext, and anyone who captures the cookie is root on the host for seven days or until you use "Log out everywhere". Use the TLS proxy for normal use. Behind it, set `FLEETLING_TRUSTED_PROXIES` (below) so cookies get the Secure flag.
+
 ### Behind a reverse proxy
 
 Five failed logins from one address in 15 minutes locks that address out for 15 minutes. Behind a proxy, every request comes from the proxy's address. So one bad guess streak locks out everyone, including you.
@@ -167,7 +172,7 @@ A few things worth knowing:
 - `.env` is saved at mode 600. On the Env tab, values for keys containing PASS, SECRET, TOKEN or KEY are blurred until you click them. If `.env` is a symlink to another file in the stack folder, the edit goes to that file and the link stays.
 - Files written into an existing folder keep that folder's owner. `/opt/jellyfin` stays owned by whoever owned it.
 - On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what the "remove with folders" option in phase 6 cleans up.
-- If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. The container can read `.env` and edit the compose file. Most apps never touch them, so it's a heads-up, not a block.
+- If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. Take that notice seriously for anything exposed to the internet: a compromised container that can write its own `compose.yaml` can add `privileged: true` or a `/:/host` mount, and the next Deploy, Update or Recreate you click runs it as root on the host. Fleetling does not yet show you on-disk changes before deploying them. Moving the app's data into a subfolder like `/opt/copyparty/cfg` closes this. The same goes for any container that mounts `/opt` itself: it can also read `fleetling.db` in `/opt/fleetling/data`, which holds the session secret. Set `FLEETLING_DATA` to a path outside the root, on its own volume, if you run one.
 - Fleetling's own stack can be edited but not deployed, stopped or restarted from inside. The process would die halfway through. Self-updates arrive in phase 7; until then, update it from the host.
 
 ## Containers, logs and the shell
