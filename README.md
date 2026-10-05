@@ -6,7 +6,7 @@ It replaces the parts of Portainer CE that actually get used: stacks, containers
 
 ## Status
 
-This is phase 4 of 11. What works right now:
+This is phase 5 of 11. What works right now:
 
 - First-run setup, login, sessions, "log out everywhere", password change.
 - Settings: stack root, ignored folders, Docker and Podman endpoints with a Test button.
@@ -16,10 +16,13 @@ This is phase 4 of 11. What works right now:
 - Containers: list with stack and state filters, Start, Stop, Restart, Kill, Remove, and Recreate for containers in a managed stack.
 - Logs for one container or a whole stack, with follow, tail, since, timestamps, a filter, wrap and download.
 - A web shell into any running container, plus Inspect and live CPU, memory and network stats.
+- Networks: list with subnets and attached containers, create with bridge, macvlan, ipvlan or any other driver, connect and disconnect with a static IP and aliases, remove.
+- Images: list with size and the containers using each, pull with live output, remove, and prune with a preview.
+- Volumes: list with the containers using each, remove, and prune with a preview.
 - The Portainer importer, through Portainer's API or straight from its data folder, plus a button to retire Portainer afterwards.
 - The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 
-The full networks page, images and volumes arrive in phase 5. The full plan is in the build spec.
+After this phase Fleetling covers everything Portainer did on this server. "Remove with folders", the safety-railed delete for a stack and its data, arrives in phase 6. The full plan is in the build spec.
 
 ## Prerequisites
 
@@ -176,6 +179,20 @@ Logs keep their colors. Containers without a TTY send stdout and stderr interlea
 The shell starts `/bin/bash` if the image has it and `/bin/sh` if not, in one exec. Set Command to run something else (it's split on spaces, not run through a shell) and User to run as someone other than the image default. Resizing the browser resizes the terminal. Distroless and scratch images have no shell at all, and the terminal says so instead of hanging. Each session goes in the action log as `docker exec -it ...` with its exit code. What you type is never logged.
 
 Fleetling's own container can't be stopped, restarted, killed or removed from its own page. Logs, shell and inspect work.
+
+## Networks, images and volumes
+
+The network form matches Portainer's: name, driver, subnet, gateway, IP range, parent interface, ipvlan mode, internal, attachable, IPv6 with its own subnet, labels and driver options. It sends the same request `docker network create` does, and the confirm shows that exact command, like:
+
+```
+docker network create -d macvlan --subnet 192.168.1.0/24 --gateway 192.168.1.1 --ip-range 192.168.1.192/27 -o parent=eth0 lan
+```
+
+Why is there a container flashing up when the form opens? Fleetling's own container can't see the host's interfaces, so it fills the parent dropdown by running a throwaway copy of its own image with `--network host` and reading `/sys/class/net`. There's a free-text box next to it in case that fails or your interface is missing. Could be eth0, could be enp3s0, you'll have to check.
+
+A network with containers attached can't be removed; the page lists them. Networks Compose made for a stack are marked with the stack's name, and removing one warns you that Compose recreates it on the next deploy. Docker's built-in bridge, host and none can't be removed at all.
+
+Every prune shows the list of what will go before it runs. Image prune comes in two sizes: dangling only, or every image no container uses. Volume prune does unused anonymous volumes by default, like `docker volume prune` does since Docker 23; "Prune all unused" adds named volumes too. A named volume holds data, so read that list.
 
 ## How stacks are listed
 

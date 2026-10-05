@@ -1,0 +1,1 @@
+{{define "switch"}}{{if gt (len .Slots) 1}}<nav class="switch">{{$base := .Base}}{{$cur := .Slot}}{{range .Slots}}<a href="{{$base}}?engine={{.}}" {{if eq . $cur}}aria-current="page"{{end}}>{{.}}</a>{{end}}</nav>{{end}}{{end}}

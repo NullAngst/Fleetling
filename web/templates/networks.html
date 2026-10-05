@@ -1,0 +1,56 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <h1>Networks</h1>
+  <div class="actions">
+    {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/networks")}}
+    <a class="button" href="/networks/new?engine={{$d.Slot}}">New network</a>
+    <input type="search" class="search" placeholder="Search  /" data-filter="#networks" aria-label="Search networks">
+  </div>
+</header>
+{{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
+<div class="table-wrap">
+<table id="networks" class="list">
+  <thead><tr><th data-sort="text">Name</th><th data-sort="text">Driver</th><th>Subnet</th><th>Gateway</th><th>Containers</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+    <tr>
+      <td data-label="Name"><span class="mono">{{.Name}}</span>{{if .StackOwned}} <span class="muted">stack {{.Project}}</span>{{end}}{{if .BuiltIn}} <span class="muted">built in</span>{{end}}
+        <div class="muted small">{{if .Internal}}internal {{end}}{{if .Attachable}}attachable {{end}}{{if .IPv6}}IPv6 {{end}}{{range $k, $v := .Options}}{{$k}}={{$v}} {{end}}</div></td>
+      <td data-label="Driver" class="mono">{{.Driver}}</td>
+      <td data-label="Subnet" class="mono">{{join .Subnets ", "}}</td>
+      <td data-label="Gateway" class="mono">{{join .Gateways ", "}}</td>
+      <td data-label="Containers">
+        {{$n := .}}
+        {{range .Containers}}
+        <form method="post" action="/networks/{{$d.Slot}}/{{$n.ID}}/disconnect" class="inline-form">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="container" value="{{.}}">
+          <span class="mono">{{.}}</span> <button type="submit" class="link small" data-command="docker network disconnect {{$n.Name}} {{.}}" data-title="Disconnect {{.}} from {{$n.Name}}?">disconnect</button>
+        </form>
+        {{end}}
+        {{if not .BuiltIn}}
+        <details class="small"><summary>Connect a container</summary>
+          <form method="post" action="/networks/{{$d.Slot}}/{{.ID}}/connect" class="form">
+            <input type="hidden" name="csrf" value="{{$.CSRF}}">
+            <select name="container" required>{{range $d.Extra.Containers}}<option>{{.Name}}</option>{{end}}</select>
+            <input name="ip" class="mono" placeholder="static IP, optional">
+            <input name="aliases" class="mono" placeholder="aliases, comma separated">
+            <button type="submit">Connect</button>
+          </form>
+        </details>
+        {{end}}
+      </td>
+      <td data-label="">
+        {{if and (not .BuiltIn) (not .Containers)}}
+        <form method="post" action="/networks/{{$d.Slot}}/{{.ID}}/remove">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}">
+          <button type="submit" data-command="docker network rm {{.Name}}" data-title="{{if .StackOwned}}{{.Name}} belongs to stack {{.Project}}. Compose recreates it on the next deploy. Remove it?{{else}}Remove {{.Name}}?{{end}}" data-danger>Remove</button>
+        </form>
+        {{else if .Containers}}<span class="muted small">in use</span>{{end}}
+      </td>
+    </tr>
+  {{else}}<tr><td colspan="6" class="muted">No networks.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

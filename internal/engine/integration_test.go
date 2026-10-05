@@ -4,7 +4,9 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -53,5 +55,67 @@ func TestIntegrationEngine(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("labeled test container not in %+v", containers)
+	}
+}
+
+// The phase 5 done-when on a real engine: a macvlan network made through
+// Fleetling inspects the same as one made with `docker network create`.
+func TestIntegrationMacvlanMatchesCLI(t *testing.T) {
+	host := os.Getenv("FLEETLING_IT_HOST")
+	if host == "" {
+		t.Skip("FLEETLING_IT_HOST not set")
+	}
+	parent := os.Getenv("FLEETLING_IT_PARENT")
+	if parent == "" {
+		parent = "eth0"
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	c, err := New(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	spec := NetworkSpec{Name: "fl-it-lan", Driver: "macvlan", Subnet: "10.231.1.0/24", Gateway: "10.231.1.1", IPRange: "10.231.1.192/27", Parent: parent}
+	type shape struct {
+		Driver     string
+		EnableIPv4 bool
+		EnableIPv6 bool
+		Internal   bool
+		Attachable bool
+		IPAM       any
+		Options    map[string]string
+	}
+	inspect := func() shape {
+		t.Helper()
+		n, err := c.InspectNetwork(ctx, spec.Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return shape{n.Driver, n.EnableIPv4, n.EnableIPv6, n.Internal, n.Attachable, n.IPAM, n.Options}
+	}
+
+	if _, _, err := c.CreateNetwork(ctx, spec); err != nil {
+		t.Fatal(err)
+	}
+	ui := inspect()
+	if err := c.RemoveNetwork(ctx, spec.Name); err != nil {
+		t.Fatal(err)
+	}
+
+	cli := spec.CLI()
+	cmd := exec.CommandContext(ctx, cli[0], cli[1:]...)
+	cmd.Env = append(os.Environ(), "DOCKER_HOST=unix://"+host)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	defer c.RemoveNetwork(context.Background(), spec.Name)
+	want := inspect()
+
+	uj, _ := json.Marshal(ui)
+	wj, _ := json.Marshal(want)
+	if string(uj) != string(wj) {
+		t.Errorf("UI network differs from the CLI's:\n  ui %s\n cli %s", uj, wj)
 	}
 }

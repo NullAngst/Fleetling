@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -22,17 +23,44 @@ import (
 
 // Container is one fake container.
 type Container struct {
+	ID       string
+	Name     string
+	Image    string
+	Running  bool
+	Tty      bool
+	Labels   map[string]string
+	Logs     []Line // sent on every logs request
+	Follow   []Line // sent 50ms later when following
+	NoShell  bool   // exec fails like a distroless image
+	Env      []string
+	Mounts   []Mount
+	ImageID  string
+	Volumes  []string // named volumes mounted
+	Networks []string // networks attached
+}
+
+// Network is a fake network.
+type Network struct {
 	ID      string
 	Name    string
-	Image   string
-	Running bool
-	Tty     bool
+	Driver  string
 	Labels  map[string]string
-	Logs    []Line // sent on every logs request
-	Follow  []Line // sent 50ms later when following
-	NoShell bool   // exec fails like a distroless image
-	Env     []string
-	Mounts  []Mount
+	Subnet  string
+	Gateway string
+	Options map[string]string
+}
+
+// Image is a fake image.
+type Image struct {
+	ID   string
+	Tags []string
+	Size int64
+}
+
+// Volume is a fake volume.
+type Volume struct {
+	Name   string
+	Labels map[string]string
 }
 
 // Mount is a bind mount on a fake container.
@@ -52,6 +80,14 @@ type Engine struct {
 
 	// ImageEnv maps an image reference to the Env baked into it.
 	ImageEnv map[string][]string
+
+	Networks []*Network
+	Images   []*Image
+	Volumes  []*Volume
+	// Created holds the raw body of every POST /networks/create.
+	Created [][]byte
+	// Connects holds the raw body of every network connect.
+	Connects [][]byte
 
 	mu         sync.Mutex
 	containers map[string]*Container
@@ -158,8 +194,17 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 			if c.Running {
 				state = "running"
 			}
-			out = append(out, map[string]any{"Id": c.ID, "Names": []string{"/" + c.Name}, "Image": c.Image, "State": state,
+			mounts := []map[string]any{}
+			for _, v := range c.Volumes {
+				mounts = append(mounts, map[string]any{"Type": "volume", "Name": v, "Destination": "/data"})
+			}
+			nets := map[string]any{}
+			for _, n := range c.Networks {
+				nets[n] = map[string]any{"NetworkID": n}
+			}
+			out = append(out, map[string]any{"Id": c.ID, "Names": []string{"/" + c.Name}, "Image": c.Image, "ImageID": c.ImageID, "State": state,
 				"Status": "Up 3 hours", "Labels": c.Labels, "Created": time.Now().Add(-3 * time.Hour).Unix(),
+				"Mounts": mounts, "NetworkSettings": map[string]any{"Networks": nets},
 				"Ports": []map[string]any{{"IP": "0.0.0.0", "PrivatePort": 3000, "PublicPort": 3000, "Type": "tcp"}, {"IP": "::", "PrivatePort": 3000, "PublicPort": 3000, "Type": "tcp"}}})
 		}
 		e.mu.Unlock()
@@ -172,6 +217,79 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.container(w, r, c, parts[2:], j)
+	case path == "/networks" && r.Method == http.MethodGet:
+		e.mu.Lock()
+		var out []map[string]any
+		for _, n := range e.Networks {
+			cfg := []map[string]any{}
+			if n.Subnet != "" {
+				cfg = append(cfg, map[string]any{"Subnet": n.Subnet, "Gateway": n.Gateway})
+			}
+			out = append(out, map[string]any{"Id": n.ID, "Name": n.Name, "Driver": n.Driver, "Scope": "local", "Labels": n.Labels,
+				"Options": n.Options, "IPAM": map[string]any{"Driver": "default", "Config": cfg}})
+		}
+		e.mu.Unlock()
+		j(out)
+	case path == "/networks/create":
+		b, _ := io.ReadAll(r.Body)
+		var req struct{ Name, Driver string }
+		json.Unmarshal(b, &req)
+		e.mu.Lock()
+		e.Created = append(e.Created, b)
+		id := fmt.Sprintf("net%d", len(e.Networks)+1)
+		e.Networks = append(e.Networks, &Network{ID: id, Name: req.Name, Driver: req.Driver})
+		e.mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		j(map[string]any{"Id": id, "Warning": ""})
+	case len(parts) == 3 && parts[0] == "networks" && (parts[2] == "connect" || parts[2] == "disconnect"):
+		b, _ := io.ReadAll(r.Body)
+		e.mu.Lock()
+		e.Connects = append(e.Connects, b)
+		e.calls = append(e.calls, "POST network "+parts[2]+" "+parts[1])
+		e.mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	case len(parts) == 2 && parts[0] == "networks" && r.Method == http.MethodDelete:
+		e.mu.Lock()
+		e.calls = append(e.calls, "DELETE network "+parts[1])
+		e.Networks = slices.DeleteFunc(e.Networks, func(n *Network) bool { return n.ID == parts[1] || n.Name == parts[1] })
+		e.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	case path == "/images/json":
+		e.mu.Lock()
+		var out []map[string]any
+		for _, im := range e.Images {
+			out = append(out, map[string]any{"Id": im.ID, "RepoTags": im.Tags, "Size": im.Size, "Created": time.Now().Add(-48 * time.Hour).Unix(), "Containers": -1})
+		}
+		e.mu.Unlock()
+		j(out)
+	case path == "/images/prune":
+		e.mu.Lock()
+		e.calls = append(e.calls, "POST images prune "+r.URL.Query().Get("filters"))
+		e.mu.Unlock()
+		j(map[string]any{"ImagesDeleted": []map[string]string{{"Deleted": "sha256:x"}}, "SpaceReclaimed": 1 << 20})
+	case len(parts) >= 2 && parts[0] == "images" && r.Method == http.MethodDelete:
+		e.mu.Lock()
+		e.calls = append(e.calls, "DELETE image "+strings.Join(parts[1:], "/"))
+		e.mu.Unlock()
+		j([]map[string]string{{"Untagged": strings.Join(parts[1:], "/")}})
+	case path == "/volumes" && r.Method == http.MethodGet:
+		e.mu.Lock()
+		var out []map[string]any
+		for _, v := range e.Volumes {
+			out = append(out, map[string]any{"Name": v.Name, "Driver": "local", "Mountpoint": "/var/lib/docker/volumes/" + v.Name + "/_data", "Labels": v.Labels, "Scope": "local"})
+		}
+		e.mu.Unlock()
+		j(map[string]any{"Volumes": out, "Warnings": nil})
+	case path == "/volumes/prune":
+		e.mu.Lock()
+		e.calls = append(e.calls, "POST volumes prune "+r.URL.Query().Get("filters"))
+		e.mu.Unlock()
+		j(map[string]any{"VolumesDeleted": []string{"anon1"}, "SpaceReclaimed": 4096})
+	case len(parts) == 2 && parts[0] == "volumes" && r.Method == http.MethodDelete:
+		e.mu.Lock()
+		e.calls = append(e.calls, "DELETE volume "+parts[1])
+		e.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
 	case len(parts) >= 3 && parts[0] == "images" && parts[len(parts)-1] == "json":
 		ref := strings.Join(parts[1:len(parts)-1], "/")
 		e.mu.Lock()

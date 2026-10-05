@@ -1,0 +1,47 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <h1>Images</h1>
+  <div class="actions">
+    {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/images")}}
+    <input type="search" class="search" placeholder="Search  /" data-filter="#images" aria-label="Search images">
+  </div>
+</header>
+{{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
+<div class="action-bar">
+  <form method="post" action="/images/{{$d.Slot}}/pull" class="inline-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input name="ref" class="mono" placeholder="nginx:latest" required aria-label="Image to pull">
+    <button type="submit">Pull</button>
+  </form>
+  <form method="post" action="/images/{{$d.Slot}}/prune"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Prune dangling</button></form>
+  <form method="post" action="/images/{{$d.Slot}}/prune"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="all" value="1"><button type="submit">Prune all unused</button></form>
+</div>
+{{if $d.JobID}}
+<section class="job" data-job="{{$d.JobID}}">
+  <div class="job-head"><strong>Output</strong> <span class="job-status muted">Connecting...</span></div>
+  <pre class="job-out mono"></pre>
+</section>
+{{end}}
+<div class="table-wrap">
+<table id="images" class="list">
+  <thead><tr><th data-sort="text">Repository:tag</th><th data-sort="text">ID</th><th data-sort="num">Size</th><th data-sort="text">Created</th><th>Used by</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+    <tr>
+      <td data-label="Image" class="mono">{{if .Tags}}{{join .Tags ", "}}{{else}}<span class="muted">&lt;none&gt;</span>{{end}}</td>
+      <td data-label="ID" class="mono muted">{{.ShortID}}</td>
+      <td data-label="Size" data-value="{{.Size}}" class="mono">{{bytes (u64 .Size)}}</td>
+      <td data-label="Created" class="mono nowrap">{{.Created.Format "2006-01-02"}}</td>
+      <td data-label="Used by" class="mono">{{if .UsedBy}}{{join .UsedBy ", "}}{{else}}<span class="muted">unused</span>{{end}}</td>
+      <td data-label="">{{if not .UsedBy}}
+        <form method="post" action="/images/{{$d.Slot}}/remove">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="ref" value="{{.ID}}">
+          <button type="submit" data-command="docker rmi {{if .Tags}}{{index .Tags 0}}{{else}}{{.ShortID}}{{end}}" data-title="Remove this image?" data-danger>Remove</button>
+        </form>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="6" class="muted">No images.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

@@ -1,0 +1,22 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>{{.Title}}</h1>
+{{if $d.Items}}
+<p>These {{len $d.Items}} {{$d.Kind}} are unused right now and will go:</p>
+<ul class="mono">{{range $d.Items}}<li>{{.}}</li>{{end}}</ul>
+<p class="muted">The engine decides at the moment it runs, so something started in between is kept.</p>
+<form method="post" action="/{{$d.Kind}}/{{$d.Slot}}/prune">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="confirm" value="yes">
+  {{if $d.All}}<input type="hidden" name="all" value="1">{{end}}
+  <p class="mono cmd">{{$d.CLI}}</p>
+  <div class="actions">
+    <button type="submit" class="danger">Prune {{len $d.Items}} {{$d.Kind}}</button>
+    <a href="/{{$d.Kind}}?engine={{$d.Slot}}">Cancel</a>
+  </div>
+</form>
+{{else}}
+<p class="muted">Nothing to prune.</p>
+<p><a href="/{{$d.Kind}}?engine={{$d.Slot}}">Back</a></p>
+{{end}}
+{{end}}

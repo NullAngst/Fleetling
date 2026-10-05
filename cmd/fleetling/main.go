@@ -33,9 +33,14 @@ func main() {
 			return
 		case "healthcheck":
 			os.Exit(healthcheck())
+		case "ifaces":
+			// Run in a throwaway --network host container, so /sys/class/net
+			// is the host's. That is how the networks page fills its parent
+			// interface list.
+			os.Exit(ifaces())
 		case "serve":
 		default:
-			fmt.Fprintf(os.Stderr, "usage: fleetling [serve|healthcheck|version]\n")
+			fmt.Fprintf(os.Stderr, "usage: fleetling [serve|healthcheck|ifaces|version]\n")
 			os.Exit(2)
 		}
 	}
@@ -134,6 +139,18 @@ func healthcheck() int {
 	if resp.StatusCode != http.StatusOK {
 		fmt.Fprintln(os.Stderr, "status", resp.Status)
 		return 1
+	}
+	return 0
+}
+
+func ifaces() int {
+	entries, err := os.ReadDir("/sys/class/net")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	for _, e := range entries {
+		fmt.Println(e.Name())
 	}
 	return 0
 }

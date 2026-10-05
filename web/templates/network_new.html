@@ -1,0 +1,54 @@
+{{define "content"}}
+{{$d := .Data}}{{$s := $d.Spec}}
+<h1>New network{{if gt (len $d.Slots) 1}} on {{$d.Slot}}{{end}}</h1>
+<form method="post" action="/networks/new" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="engine" value="{{$d.Slot}}">
+  <div class="field-row">
+    <label>Name <input name="name" class="mono" value="{{$s.Name}}" required></label>
+    <label>Driver
+      <select name="driver" data-driver>
+        {{range $opt := list "bridge" "macvlan" "ipvlan"}}<option value="{{$opt}}" {{if eq $s.Driver $opt}}selected{{end}}>{{$opt}}</option>{{end}}
+        <option value="other" {{if not (or (eq $s.Driver "bridge") (eq $s.Driver "macvlan") (eq $s.Driver "ipvlan"))}}selected{{end}}>other</option>
+      </select>
+    </label>
+    <label data-show-driver="other">Driver name <input name="driver_other" class="mono" value="{{if not (or (eq $s.Driver "bridge") (eq $s.Driver "macvlan") (eq $s.Driver "ipvlan"))}}{{$s.Driver}}{{end}}"></label>
+  </div>
+  <div class="field-row">
+    <label>Subnet <input name="subnet" class="mono" value="{{$s.Subnet}}" placeholder="192.168.1.0/24"></label>
+    <label>Gateway <input name="gateway" class="mono" value="{{$s.Gateway}}" placeholder="192.168.1.1"></label>
+    <label>IP range <input name="ip_range" class="mono" value="{{$s.IPRange}}" placeholder="192.168.1.192/27"></label>
+  </div>
+  <div class="field-row" data-show-driver="macvlan ipvlan">
+    <label>Parent interface
+      <select name="parent">
+        <option value=""></option>
+        {{range $d.Ifaces}}<option {{if eq . $s.Parent}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      {{if $d.IfErr}}<small class="warn">Could not list the host's interfaces: {{$d.IfErr}}</small>{{end}}
+    </label>
+    <label>Or type one <input name="parent_other" class="mono" placeholder="eth0, could be enp0s3"></label>
+    <label data-show-driver="ipvlan">ipvlan mode
+      <select name="ipvlan_mode"><option value="l2" {{if eq $s.IPvlanMode "l2"}}selected{{end}}>l2</option><option value="l3" {{if eq $s.IPvlanMode "l3"}}selected{{end}}>l3</option></select>
+    </label>
+  </div>
+  <div class="field-row">
+    <label class="check"><input type="checkbox" name="internal" value="1" {{if $s.Internal}}checked{{end}}> Internal, no outside access</label>
+    <label class="check"><input type="checkbox" name="attachable" value="1" {{if $s.Attachable}}checked{{end}}> Attachable</label>
+    <label class="check"><input type="checkbox" name="ipv6" value="1" {{if $s.IPv6}}checked{{end}}> IPv6</label>
+  </div>
+  <div class="field-row">
+    <label>IPv6 subnet <input name="subnet6" class="mono" value="{{$s.Subnet6}}" placeholder="fd00:1::/64"></label>
+    <label>IPv6 gateway <input name="gateway6" class="mono" value="{{$s.Gateway6}}"></label>
+  </div>
+  <h2>Driver options</h2>
+  {{range $d.Options}}<div class="field-row kv"><input name="k_opt" class="mono" value="{{index . 0}}" placeholder="key"><input name="v_opt" class="mono" value="{{index . 1}}" placeholder="value"></div>{{end}}
+  <h2>Labels</h2>
+  {{range $d.Labels}}<div class="field-row kv"><input name="k_label" class="mono" value="{{index . 0}}" placeholder="key"><input name="v_label" class="mono" value="{{index . 1}}" placeholder="value"></div>{{end}}
+  <div class="actions">
+    <button type="submit" class="primary">Create network</button>
+    <a href="/networks?engine={{$d.Slot}}">Cancel</a>
+  </div>
+  <p class="muted">The parent list comes from a throwaway <span class="mono">--network host</span> container, since Fleetling's own container can't see the host's interfaces.</p>
+</form>
+{{end}}

@@ -51,6 +51,17 @@ type Engine interface {
 	Stats(ctx context.Context, id string) (engine.Stats, error)
 	Shell(ctx context.Context, id string, cmd []string, user string, cols, rows uint) (*engine.Exec, error)
 	ImageEnv(ctx context.Context, ref string) ([]string, error)
+	Networks(ctx context.Context) ([]engine.NetworkRow, error)
+	CreateNetwork(ctx context.Context, s engine.NetworkSpec) (string, []string, error)
+	RemoveNetwork(ctx context.Context, id string) error
+	ConnectNetwork(ctx context.Context, netID, ctr, ip string, aliases []string) error
+	DisconnectNetwork(ctx context.Context, netID, ctr string) error
+	Images(ctx context.Context) ([]engine.ImageRow, error)
+	RemoveImage(ctx context.Context, ref string) error
+	PruneImages(ctx context.Context, all bool) (int, uint64, error)
+	Volumes(ctx context.Context) ([]engine.VolumeRow, error)
+	RemoveVolume(ctx context.Context, name string) error
+	PruneVolumes(ctx context.Context, all bool) (int, uint64, error)
 	Close() error
 }
 
@@ -70,6 +81,7 @@ type Server struct {
 	newEngine   func(endpoint string) (Engine, error)
 	inContainer func() bool
 	selfIDs     func() []string
+	listIfaces  func(ctx context.Context, st store.Settings, slot string) ([]string, error)
 	now         func() time.Time
 
 	imp importState
@@ -125,6 +137,7 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 	if !s.setUp {
 		s.setupToken = hex.EncodeToString(randomBytes(12))
 	}
+	s.listIfaces = s.hostInterfaces
 	s.handler = s.routes()
 	go s.pruneLoop()
 	return s, nil
@@ -194,6 +207,19 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /import/apply", s.requireAuth(s.importApply))
 	mux.HandleFunc("POST /import/reset", s.requireAuth(s.importReset))
 	mux.HandleFunc("POST /import/retire", s.requireAuth(s.importRetire))
+	mux.HandleFunc("GET /networks", s.requireAuth(s.networksPage))
+	mux.HandleFunc("GET /networks/new", s.requireAuth(s.networkForm))
+	mux.HandleFunc("POST /networks/new", s.requireAuth(s.networkCreate))
+	mux.HandleFunc("POST /networks/{slot}/{id}/remove", s.requireAuth(s.networkRemove))
+	mux.HandleFunc("POST /networks/{slot}/{id}/connect", s.requireAuth(s.networkConnect))
+	mux.HandleFunc("POST /networks/{slot}/{id}/disconnect", s.requireAuth(s.networkDisconnect))
+	mux.HandleFunc("GET /images", s.requireAuth(s.imagesPage))
+	mux.HandleFunc("POST /images/{slot}/pull", s.requireAuth(s.imagePull))
+	mux.HandleFunc("POST /images/{slot}/remove", s.requireAuth(s.imageRemove))
+	mux.HandleFunc("POST /images/{slot}/prune", s.requireAuth(s.imagePrune))
+	mux.HandleFunc("GET /volumes", s.requireAuth(s.volumesPage))
+	mux.HandleFunc("POST /volumes/{slot}/remove", s.requireAuth(s.volumeRemove))
+	mux.HandleFunc("POST /volumes/{slot}/prune", s.requireAuth(s.volumePrune))
 	mux.HandleFunc("GET /containers", s.requireAuth(s.containersPage))
 	mux.HandleFunc("GET /containers/{slot}/{id}", s.requireAuth(s.containerPage))
 	mux.HandleFunc("GET /containers/{slot}/{id}/stats", s.requireAuth(s.containerStats))

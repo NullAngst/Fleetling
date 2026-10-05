@@ -148,3 +148,15 @@ document.addEventListener("keydown", (e) => {
 });
 
 for (const el of document.querySelectorAll("[data-logs]")) setupLogs(el);
+
+// Network form: show only the fields that apply to the chosen driver.
+for (const sel of document.querySelectorAll("select[data-driver]")) {
+  const form = sel.closest("form");
+  const sync = () => {
+    form.querySelectorAll("[data-show-driver]").forEach((el) => {
+      el.hidden = !el.dataset.showDriver.split(" ").includes(sel.value);
+    });
+  };
+  sel.addEventListener("change", sync);
+  sync();
+}

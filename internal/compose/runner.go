@@ -76,6 +76,18 @@ func (r Runner) Command(ctx context.Context, t Target, cmd ...string) *exec.Cmd 
 	return c
 }
 
+// Plain builds a docker command that is not tied to a stack, like
+// `docker pull`, against the given engine host.
+func (r Runner) Plain(ctx context.Context, host string, podman bool, args ...string) *exec.Cmd {
+	bin := r.Docker
+	if bin == "" {
+		bin = "docker"
+	}
+	c := exec.CommandContext(ctx, bin, args...)
+	c.Env = r.Env(Target{Host: host, Podman: podman})
+	return c
+}
+
 // Validate runs `docker compose config -q` against compose text that is
 // not on disk yet. The compose file goes in on stdin and the env text in a
 // temporary file outside the stack folder, so nothing in the folder changes.

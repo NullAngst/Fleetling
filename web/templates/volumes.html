@@ -1,0 +1,36 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <h1>Volumes</h1>
+  <div class="actions">
+    {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/volumes")}}
+    <input type="search" class="search" placeholder="Search  /" data-filter="#volumes" aria-label="Search volumes">
+  </div>
+</header>
+{{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
+<div class="action-bar">
+  <form method="post" action="/volumes/{{$d.Slot}}/prune"><input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit">Prune unused anonymous</button></form>
+  <form method="post" action="/volumes/{{$d.Slot}}/prune"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="all" value="1"><button type="submit">Prune all unused</button></form>
+</div>
+<div class="table-wrap">
+<table id="volumes" class="list">
+  <thead><tr><th data-sort="text">Name</th><th data-sort="text">Stack</th><th data-sort="text">Driver</th><th>Mountpoint</th><th>Used by</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}
+    <tr>
+      <td data-label="Name" class="mono">{{.Name}}{{if .Anonymous}} <span class="muted">anonymous</span>{{end}}</td>
+      <td data-label="Stack" class="mono">{{.Project}}</td>
+      <td data-label="Driver" class="mono">{{.Driver}}</td>
+      <td data-label="Mountpoint" class="mono muted">{{.Mountpoint}}</td>
+      <td data-label="Used by" class="mono">{{if .UsedBy}}{{join .UsedBy ", "}}{{else}}<span class="muted">unused</span>{{end}}</td>
+      <td data-label="">{{if not .UsedBy}}
+        <form method="post" action="/volumes/{{$d.Slot}}/remove">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="name" value="{{.Name}}">
+          <button type="submit" data-command="docker volume rm {{.Name}}" data-title="Delete volume {{.Name}} and everything in it?" data-danger>Remove</button>
+        </form>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="6" class="muted">No volumes.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
