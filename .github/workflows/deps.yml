@@ -15,6 +15,11 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      # True once the DEPS_TOKEN secret exists. Moving the pinned actions
+      # edits files under .github/workflows, and GitHub never lets the
+      # built-in token push those. See "Dependencies" in the README.
+      HAS_DEPS_TOKEN: ${{ secrets.DEPS_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -41,13 +46,41 @@ jobs:
       - run: go test -race ./...
       - name: Image builds against the newest base images
         run: docker build --pull -t fleetling:deps-check .
-      # Third-party action pinned to a commit. v8.1.1.
-      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1
+      - name: Pinned actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Third-party actions are pinned to a full commit, with the
+          # release it came from after the #. Move each one to the commit
+          # of its newest release. The pin stays a commit, so a tag moved
+          # later can't swap the code, and the PR shows every change.
+          set -euo pipefail
+          for f in .github/workflows/*.yml; do
+            grep -oE 'uses: [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}' "$f" | sort -u | while read -r _ ref; do
+              repo=${ref%@*}
+              old=${ref#*@}
+              tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name) || { echo "::warning::could not read the latest release of $repo"; continue; }
+              [[ $tag =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::warning::unexpected tag name from $repo"; continue; }
+              sha=$(gh api "repos/$repo/commits/$tag" --jq .sha) || { echo "::warning::could not resolve $repo $tag"; continue; }
+              [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::warning::unexpected commit from $repo"; continue; }
+              [ "$sha" = "$old" ] && continue
+              if [ "$HAS_DEPS_TOKEN" != "true" ]; then
+                echo "::warning::$repo has a newer release, $tag. Add the DEPS_TOKEN secret and this workflow moves it for you."
+                continue
+              fi
+              sed -i -E "s|$repo@$old( # [^ ]+)?|$repo@$sha # $tag|" "$f"
+              echo "$f: $repo now at $tag ($sha)"
+            done
+          done
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          # The built-in token can't push workflow changes, and PRs it
+          # opens don't run CI. DEPS_TOKEN fixes both when it is set.
+          token: ${{ secrets.DEPS_TOKEN || github.token }}
           branch: deps/weekly
           delete-branch: true
           commit-message: "Update dependencies"
           title: "Weekly dependency update"
           body: |
-            Automated update: `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`.
+            Automated update: `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`, and the pinned third-party actions moved to the commit of their newest release.
             vet, staticcheck, the race tests and an image build with `--pull` all passed in the deps run before this PR was opened.
