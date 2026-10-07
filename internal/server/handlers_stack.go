@@ -48,7 +48,7 @@ type stackPageData struct {
 	Env           []envLine
 	HasEnv        bool
 	Services      []serviceRow
-	Actions       []actionButton
+	ActionGroups  [][]actionButton // toolbar groups: bring up, run state, tear down
 	Self          bool
 	FolderMounted []string
 	JobID         string
@@ -154,8 +154,11 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 		d.Review, d.ReviewCount = rs.State, len(rs.Changes)
 	}
 	if t, err := s.target(st, f); err == nil {
+		group := map[string]int{"deploy": 0, "update": 0, "recreate": 0, "restart": 1, "start": 1, "stop": 1, "down": 2}
+		d.ActionGroups = make([][]actionButton, 3)
 		for _, a := range stackActions {
-			d.Actions = append(d.Actions, actionButton{Key: a.Key, Label: a.Label, Command: s.commandLine(t, a), Danger: a.Danger})
+			g := group[a.Key]
+			d.ActionGroups[g] = append(d.ActionGroups[g], actionButton{Key: a.Key, Label: a.Label, Command: s.commandLine(t, a), Danger: a.Danger})
 		}
 	} else {
 		d.TargetErr = err.Error()

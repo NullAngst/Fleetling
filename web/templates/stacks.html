@@ -1,21 +1,30 @@
 {{define "content"}}
+{{$d := .Data}}
 <header class="page-head">
-  <h1>Stacks</h1>
-  <div class="actions">
-  <a class="button" href="/stacks/new">New stack</a>
-  <input type="search" class="search" placeholder="Search  /" data-filter="#stacks" aria-label="Search stacks">
+  <div class="title-block">
+    <h1>Stacks</h1>
+    <p class="subtitle"><span class="mono">{{$d.Root}}</span>: {{$d.Managed}} managed, {{$d.OnDisk}} on disk, {{$d.External}} external</p>
   </div>
+  <a class="button primary" href="/stacks/new">{{template "i-plus"}}New stack</a>
 </header>
-<p class="muted">
-  <span class="mono">{{.Data.Root}}</span>.
-  {{.Data.Managed}} managed, {{.Data.OnDisk}} on disk, {{.Data.External}} external.
-</p>
-{{range .Data.Engines}}
-  {{if .Up}}<p class="engine-line"><span class="dot dot-ok"></span>{{.Slot}} <span class="mono muted">{{.Host}}</span>, {{.Containers}} Compose containers</p>
-  {{else if .Missing}}<p class="engine-line muted"><span class="dot dot-off"></span>{{.Slot}}: no socket at <span class="mono">{{.Host}}</span></p>
+
+<div class="engines">
+{{range $d.Engines}}
+  {{if .Up}}<div class="engine"><span class="dot dot-ok"></span><strong>{{.Slot}}</strong> <span class="mono muted">{{.Host}}</span> <span class="muted">{{.Containers}} Compose containers</span></div>
+  {{else if .Missing}}<div class="engine is-off"><span class="dot dot-off"></span><strong>{{.Slot}}</strong> <span class="muted">no socket at</span> <span class="mono muted">{{.Host}}</span></div>
   {{else}}<div class="msg msg-error"><strong>{{.Slot}}</strong> did not answer at <span class="mono">{{.Host}}</span>: <span class="mono">{{.Err}}</span></div>{{end}}
 {{end}}
-{{if .Data.ScanErr}}<div class="msg msg-error">Could not read the stack root: <span class="mono">{{.Data.ScanErr}}</span></div>{{end}}
+</div>
+{{if $d.ScanErr}}<div class="msg msg-error">Could not read the stack root: <span class="mono">{{$d.ScanErr}}</span></div>{{end}}
+
+<div class="filter-bar">
+  <div class="chips" role="group" aria-label="Filter by status">
+    <input type="hidden" data-col-filter="#stacks" data-col="1" value="">
+    <button type="button" class="chip" data-chip="" aria-pressed="true">All <span class="n">{{len $d.Stacks}}</span></button>
+    {{range $d.Counts}}<button type="button" class="chip" data-chip="{{.Label}}" aria-pressed="false"><span class="dot dot-{{.State}}"></span>{{.Label}} <span class="n">{{.N}}</span></button>{{end}}
+  </div>
+  <span class="searchbox"><input type="search" class="search" placeholder="Search" data-filter="#stacks" aria-label="Search stacks" aria-keyshortcuts="/"><kbd>/</kbd></span>
+</div>
 
 <div class="table-wrap">
 <table id="stacks" class="list">
@@ -29,20 +38,20 @@
     </tr>
   </thead>
   <tbody>
-  {{range .Data.Stacks}}
+  {{range $d.Stacks}}
     <tr>
       <td data-label="Project">
-        {{if .Folder}}<a class="mono" href="/stacks/{{.Folder}}">{{.Project}}</a>{{else}}<span class="mono">{{.Project}}</span>{{end}}
-        {{if eq .Review "modified"}}<div><a class="warn" href="/stacks/{{.Folder}}/review">changed outside Fleetling, review</a></div>{{else if eq .Review "unrecorded"}}<div><a class="muted small" href="/stacks/{{.Folder}}/review">not reviewed yet</a></div>{{end}}
-        {{range .Warnings}}<div class="warn">{{.}}</div>{{end}}
+        <div class="name-cell">{{if .Folder}}<a class="name" href="/stacks/{{.Folder}}">{{.Project}}</a>{{else}}<span class="name">{{.Project}}</span>{{end}}
+        {{if eq .Review "modified"}}<a class="flag flag-bad" href="/stacks/{{.Folder}}/review">changed outside Fleetling, review</a>{{else if eq .Review "unrecorded"}}<a class="flag" href="/stacks/{{.Folder}}/review">not reviewed yet</a>{{end}}</div>
+        {{range .Warnings}}<div class="warn small">{{.}}</div>{{end}}
       </td>
-      <td data-label="Status"><span class="dot dot-{{if eq .Kind "managed"}}{{.State}}{{else}}{{.Kind}}{{end}}"></span>{{.Label}}</td>
-      <td data-label="Services" data-value="{{.Running}}" class="mono">{{.Running}}/{{.Total}}</td>
-      <td data-label="Engine">{{if .Engine}}{{.Engine}}{{else}}<span class="muted">none yet</span>{{end}}</td>
-      <td data-label="Folder" class="mono">{{.Dir}}{{if .ComposeFile}}<span class="muted">/{{.ComposeFile}}</span>{{end}}</td>
+      <td data-label="Status" data-value="{{.Label}}"><span class="state"><span class="dot dot-{{if eq .Kind "managed"}}{{.State}}{{else}}{{.Kind}}{{end}}"></span>{{.Label}}</span></td>
+      <td data-label="Services" data-value="{{.Running}}" class="mono num">{{.Running}}/{{.Total}}</td>
+      <td data-label="Engine" class="nowrap">{{if .Engine}}{{.Engine}}{{else}}<span class="muted">none yet</span>{{end}}</td>
+      <td data-label="Folder" class="mono path">{{.Dir}}{{if .ComposeFile}}<span class="muted">/{{.ComposeFile}}</span>{{end}}</td>
     </tr>
   {{else}}
-    <tr><td colspan="5" class="muted">No stacks found under {{$.Data.Root}} and nothing running with Compose labels.</td></tr>
+    <tr class="empty"><td colspan="5">Nothing under <span class="mono">{{$d.Root}}</span> yet, and nothing running with Compose labels. <a href="/stacks/new">Create a stack</a> or <a href="/import">import from Portainer</a>.</td></tr>
   {{end}}
   </tbody>
 </table>

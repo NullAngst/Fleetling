@@ -258,7 +258,7 @@ You need Go and Node, latest stable of each.
 2. Build the binary: `CGO_ENABLED=0 go build -o fleetling ./cmd/fleetling`
 3. Run the tests: `go test -race ./...`
 
-Skipping step 1 still builds, the pages just load without JavaScript.
+Skipping step 1 still builds; the pages then load without JavaScript and fall back to your system fonts.
 
 Release binaries for linux amd64 and arm64 are attached to each `v*` tag by the build workflow.
 

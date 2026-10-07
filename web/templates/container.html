@@ -1,24 +1,31 @@
 {{define "content"}}
 {{$d := .Data}}{{$c := $d.Detail}}
-<header class="stack-head">
-  <h1 class="mono">{{$c.Name}}</h1>
-  <span><span class="dot dot-{{if $c.Running}}ok{{else}}stopped{{end}}"></span>{{$c.State}}{{if $c.Health}} ({{$c.Health}}){{end}}</span>
-  <span class="mono muted">{{$c.ShortID}}</span>
-  <span class="mono">{{$c.Image}}</span>
-  <span>{{$d.Slot}}</span>
-  {{if $d.Folder}}<span>stack <a class="mono" href="/stacks/{{$d.Folder}}">{{$c.Project}}</a>{{if $c.Service}} / {{$c.Service}}{{end}}</span>{{else if $c.Project}}<span class="muted">project {{$c.Project}}</span>{{end}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/containers?engine={{$d.Slot}}">Containers</a>{{if $d.Folder}}<a href="/stacks/{{$d.Folder}}">{{$c.Project}}</a>{{end}}</nav>
+<header class="obj-head">
+  <h1>{{$c.Name}}</h1>
+  <span class="state state-lg"><span class="dot dot-{{if $c.Running}}{{if eq $c.Health "unhealthy"}}partial{{else}}ok{{end}}{{else}}stopped{{end}}"></span>{{$c.State}}{{if $c.Health}} <span class="muted">({{$c.Health}})</span>{{end}}</span>
 </header>
+<dl class="facts">
+  <div><dt>Image</dt><dd class="mono">{{$c.Image}}</dd></div>
+  <div><dt>ID</dt><dd class="mono">{{$c.ShortID}}</dd></div>
+  <div><dt>Engine</dt><dd>{{$d.Slot}}</dd></div>
+  {{if $c.Project}}<div><dt>Stack</dt><dd>{{if $d.Folder}}<a class="mono" href="/stacks/{{$d.Folder}}">{{$c.Project}}</a>{{else}}<span class="mono">{{$c.Project}}</span>{{end}}{{if $c.Service}} <span class="muted">/ {{$c.Service}}</span>{{end}}</dd></div>{{end}}
+</dl>
 {{if $c.Running}}<div class="stats" hx-get="/containers/{{$d.Slot}}/{{$c.ID}}/stats" hx-trigger="load, every 5s" hx-swap="innerHTML"><span class="muted">Reading stats...</span></div>{{end}}
 
-<div class="action-bar">
+<div class="toolbar">
 {{if $d.Self}}
   <span class="muted">This is Fleetling's own container. Stop, restart and remove are off here; logs, shell and inspect work.</span>
 {{else}}
-  {{range $d.Actions}}
-  <form method="post" action="/containers/{{$d.Slot}}/{{$c.ID}}/action/{{.Key}}">
-    <input type="hidden" name="csrf" value="{{$.CSRF}}">
-    <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$c.Name}}?"{{if .Danger}} data-danger{{end}}>{{.Label}}</button>
-  </form>
+  {{range $group := list "run" "end" "recreate"}}
+  <div class="seg">
+    {{range $d.Actions}}{{if eq (actionGroup .Key) $group}}
+    <form method="post" action="/containers/{{$d.Slot}}/{{$c.ID}}/action/{{.Key}}">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$c.Name}}?"{{if .Danger}} data-danger{{end}}>{{template "action-icon" .Key}}{{.Label}}</button>
+    </form>
+    {{end}}{{end}}
+  </div>
   {{end}}
 {{end}}
 </div>
@@ -35,7 +42,7 @@
 {{if $c.Running}}
 <section class="shell" data-shell="/containers/{{$d.Slot}}/{{$c.ID}}/shell/ws">
   <div class="logs-bar">
-    <label class="inline">Command <input name="cmd" class="mono" placeholder="bash, falling back to sh"></label>
+    <label class="inline">Command <input name="cmd" class="mono" placeholder="bash, else sh"></label>
     <label class="inline">User <input name="user" class="mono short" placeholder="default"></label>
     <button type="button" class="primary" data-shell-connect>Connect</button>
     <button type="button" data-shell-disconnect hidden>Disconnect</button>

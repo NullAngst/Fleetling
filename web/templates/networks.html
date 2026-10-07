@@ -4,8 +4,8 @@
   <h1>Networks</h1>
   <div class="actions">
     {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/networks")}}
-    <a class="button" href="/networks/new?engine={{$d.Slot}}">New network</a>
-    <input type="search" class="search" placeholder="Search  /" data-filter="#networks" aria-label="Search networks">
+    <a class="button primary" href="/networks/new?engine={{$d.Slot}}">{{template "i-plus"}}New network</a>
+    <span class="searchbox"><input type="search" class="search" placeholder="Search" data-filter="#networks" aria-label="Search networks" aria-keyshortcuts="/"><kbd>/</kbd></span>
   </div>
 </header>
 {{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
@@ -15,7 +15,7 @@
   <tbody>
   {{range $d.Rows}}
     <tr>
-      <td data-label="Name"><span class="mono">{{.Name}}</span>{{if .StackOwned}} <span class="muted">stack {{.Project}}</span>{{end}}{{if .BuiltIn}} <span class="muted">built in</span>{{end}}
+      <td data-label="Name"><span class="name mono">{{.Name}}</span>{{if .StackOwned}} <span class="tag">stack {{.Project}}</span>{{end}}{{if .BuiltIn}} <span class="tag">built in</span>{{end}}
         <div class="muted small">{{if .Internal}}internal {{end}}{{if .Attachable}}attachable {{end}}{{if .IPv6}}IPv6 {{end}}{{range $k, $v := .Options}}{{$k}}={{$v}} {{end}}</div></td>
       <td data-label="Driver" class="mono">{{.Driver}}</td>
       <td data-label="Subnet" class="mono">{{join .Subnets ", "}}</td>

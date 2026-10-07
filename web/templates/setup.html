@@ -1,7 +1,7 @@
 {{define "content"}}
-<section class="narrow">
+<section>
   <h1>First run</h1>
-  <p>Set the admin password and the folder your stacks live in. The setup token is printed in the container log: <code>docker logs fleetling</code>.</p>
+  <p class="muted">Set the admin password and the folder your stacks live in. The setup token is printed in the container log: <code>docker logs fleetling</code>.</p>
   <form method="post" action="/setup" class="form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <label>Setup token

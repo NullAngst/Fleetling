@@ -7,6 +7,7 @@
 <meta name="csp-nonce" content="{{.Nonce}}">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
 <title>{{.Title}} - Fleetling</title>
+<link rel="stylesheet" href="/static/dist/fonts.css">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/dist/main.js" defer></script>
 {{if .Editor}}<script src="/static/dist/editor.js" defer></script>{{end}}
@@ -14,27 +15,33 @@
 </head>
 <body class="{{if .Authed}}app{{else}}bare{{end}}">
 {{if .Authed}}
-<nav class="sidebar">
-  <div class="brand">Fleetling</div>
-  <ul>
-    <li><a href="/" {{if eq .Active "stacks"}}aria-current="page"{{end}}>Stacks</a></li>
-    <li><a href="/containers" {{if eq .Active "containers"}}aria-current="page"{{end}}>Containers</a></li>
-    <li><a href="/images" {{if eq .Active "images"}}aria-current="page"{{end}}>Images</a></li>
-    <li><a href="/networks" {{if eq .Active "networks"}}aria-current="page"{{end}}>Networks</a></li>
-    <li><a href="/volumes" {{if eq .Active "volumes"}}aria-current="page"{{end}}>Volumes</a></li>
-    <li><a href="/import" {{if eq .Active "import"}}aria-current="page"{{end}}>Import</a></li>
-    <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>Action log</a></li>
-    <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>Settings</a></li>
+<nav class="sidebar" aria-label="Main">
+  <a class="brand" href="/">{{template "mark"}}<span>Fleetling</span></a>
+  <ul class="nav">
+    <li><a href="/" {{if eq .Active "stacks"}}aria-current="page"{{end}}>{{template "i-stacks"}}<span>Stacks</span></a></li>
+    <li><a href="/containers" {{if eq .Active "containers"}}aria-current="page"{{end}}>{{template "i-containers"}}<span>Containers</span></a></li>
+    <li><a href="/images" {{if eq .Active "images"}}aria-current="page"{{end}}>{{template "i-images"}}<span>Images</span></a></li>
+    <li><a href="/networks" {{if eq .Active "networks"}}aria-current="page"{{end}}>{{template "i-networks"}}<span>Networks</span></a></li>
+    <li><a href="/volumes" {{if eq .Active "volumes"}}aria-current="page"{{end}}>{{template "i-volumes"}}<span>Volumes</span></a></li>
+    <li class="nav-gap"><a href="/import" {{if eq .Active "import"}}aria-current="page"{{end}}>{{template "i-import"}}<span>Import</span></a></li>
+    <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>{{template "i-log"}}<span>Action log</span></a></li>
+    <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>{{template "i-settings"}}<span>Settings</span></a></li>
   </ul>
   <div class="sidebar-foot">
-    <button type="button" class="link" data-theme-toggle>Theme</button>
+    <button type="button" class="side-btn" data-theme-toggle title="Switch between light and dark">{{template "i-theme"}}<span>Theme</span></button>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button type="submit" class="link">Log out</button>
+      <button type="submit" class="side-btn">{{template "i-logout"}}<span>Log out</span></button>
     </form>
-    <span class="mono muted">{{.Version}}</span>
+    <span class="version mono">{{.Version}}</span>
   </div>
 </nav>
+{{else}}
+<aside class="gate">
+  <div class="gate-brand">{{template "mark"}}<span>Fleetling</span></div>
+  <p>Compose stacks on this server, run from their own folders with the commands shown before they run.</p>
+  <span class="version mono">{{.Version}}</span>
+</aside>
 {{end}}
 <main>
   {{if .Error}}<div class="msg msg-error" role="alert">{{.Error}}</div>{{end}}
@@ -43,11 +50,14 @@
 </main>
 <dialog id="confirm-dialog">
   <form method="dialog">
-    <p data-confirm-title></p>
-    <p class="mono cmd" data-confirm-command></p>
-    <div class="actions">
-      <button value="ok" class="primary" data-confirm-ok>Run</button>
-      <button value="cancel">Cancel</button>
+    <div class="dialog-band"></div>
+    <div class="dialog-body">
+      <p class="dialog-title" data-confirm-title></p>
+      <p class="mono cmd" data-confirm-command></p>
+      <div class="actions">
+        <button value="ok" class="primary" data-confirm-ok>Run</button>
+        <button value="cancel">Cancel</button>
+      </div>
     </div>
   </form>
 </dialog>

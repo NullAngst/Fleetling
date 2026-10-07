@@ -31,7 +31,17 @@ var funcs = template.FuncMap{
 	"deref":     func(p *int) int { return *p },
 	"hasPrefix": strings.HasPrefix,
 	"list":      func(v ...string) []string { return v },
-	"u64":       func(n int64) uint64 { return uint64(max(n, 0)) },
+	// actionGroup sorts container actions into toolbar groups.
+	"actionGroup": func(key string) string {
+		switch key {
+		case "kill", "remove":
+			return "end"
+		case "recreate":
+			return "recreate"
+		}
+		return "run"
+	},
+	"u64": func(n int64) uint64 { return uint64(max(n, 0)) },
 	"dict": func(kv ...any) map[string]any {
 		m := map[string]any{}
 		for i := 0; i+1 < len(kv); i += 2 {

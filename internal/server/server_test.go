@@ -317,6 +317,12 @@ func TestStacksPage(t *testing.T) {
 	}
 	w := b.do("GET", "/", nil, nil)
 	body := w.Body.String()
+	// The status chips count each kind of row.
+	for _, want := range []string{`data-chip="On disk" aria-pressed="false"><span class="dot dot-ondisk"></span>On disk <span class="n">1</span>`, `data-chip="External"`, `All <span class="n">2</span>`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stacks page missing chip %q", want)
+		}
+	}
 	for _, want := range []string{"copyparty", "On disk", "plex", "External", "/data/compose/9", "1/1", "no socket at"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("stacks page missing %q", want)

@@ -4,7 +4,7 @@
   <h1>Volumes</h1>
   <div class="actions">
     {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/volumes")}}
-    <input type="search" class="search" placeholder="Search  /" data-filter="#volumes" aria-label="Search volumes">
+    <span class="searchbox"><input type="search" class="search" placeholder="Search" data-filter="#volumes" aria-label="Search volumes" aria-keyshortcuts="/"><kbd>/</kbd></span>
   </div>
 </header>
 {{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}
@@ -18,7 +18,7 @@
   <tbody>
   {{range $d.Rows}}
     <tr>
-      <td data-label="Name" class="mono">{{.Name}}{{if .Anonymous}} <span class="muted">anonymous</span>{{end}}</td>
+      <td data-label="Name"><span class="name mono">{{.Name}}</span>{{if .Anonymous}} <span class="tag">anonymous</span>{{end}}</td>
       <td data-label="Stack" class="mono">{{.Project}}</td>
       <td data-label="Driver" class="mono">{{.Driver}}</td>
       <td data-label="Mountpoint" class="mono muted">{{.Mountpoint}}</td>

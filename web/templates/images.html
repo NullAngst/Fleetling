@@ -4,7 +4,7 @@
   <h1>Images</h1>
   <div class="actions">
     {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/images")}}
-    <input type="search" class="search" placeholder="Search  /" data-filter="#images" aria-label="Search images">
+    <span class="searchbox"><input type="search" class="search" placeholder="Search" data-filter="#images" aria-label="Search images" aria-keyshortcuts="/"><kbd>/</kbd></span>
   </div>
 </header>
 {{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}

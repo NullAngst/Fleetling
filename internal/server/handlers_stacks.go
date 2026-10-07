@@ -14,6 +14,40 @@ type stacksData struct {
 	Managed  int
 	OnDisk   int
 	External int
+	Counts   []labelCount // one per status present, for the filter chips
+}
+
+type labelCount struct {
+	Label string
+	State string // dot class: running, partial, stopped, ondisk, external, unknown
+	N     int
+}
+
+// labelOrder is the order the filter chips appear in.
+var labelOrder = []string{"Running", "Partial", "Stopped", "On disk", "External", "Unknown"}
+
+func countLabels(stacks []compose.Stack) []labelCount {
+	n := map[string]int{}
+	state := map[string]string{}
+	for _, st := range stacks {
+		n[st.Label()]++
+		state[st.Label()] = dotClass(st)
+	}
+	var out []labelCount
+	for _, l := range labelOrder {
+		if n[l] > 0 {
+			out = append(out, labelCount{Label: l, State: state[l], N: n[l]})
+		}
+	}
+	return out
+}
+
+// dotClass is the status dot for a stack row.
+func dotClass(st compose.Stack) string {
+	if st.Kind == compose.KindManaged {
+		return string(st.State)
+	}
+	return string(st.Kind)
 }
 
 // stacksPage is the home page. Read-only in phase 1: it scans the root,
@@ -60,5 +94,6 @@ func (s *Server) stacksPage(w http.ResponseWriter, r *http.Request) {
 			d.External++
 		}
 	}
+	d.Counts = countLabels(d.Stacks)
 	s.render(w, http.StatusOK, "stacks", s.page(r, "Stacks", "stacks", d))
 }

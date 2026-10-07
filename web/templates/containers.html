@@ -11,7 +11,7 @@
     <select data-col-filter="#containers" data-col="3" aria-label="State">
       <option value="">All states</option><option>running</option><option>exited</option><option>restarting</option><option>paused</option><option>created</option>
     </select>
-    <input type="search" class="search" placeholder="Search  /" data-filter="#containers" aria-label="Search containers">
+    <span class="searchbox"><input type="search" class="search" placeholder="Search" data-filter="#containers" aria-label="Search containers" aria-keyshortcuts="/"><kbd>/</kbd></span>
   </div>
 </header>
 {{if $d.Err}}<div class="msg msg-error">{{$d.Slot}}: <span class="mono">{{$d.Err}}</span></div>{{end}}

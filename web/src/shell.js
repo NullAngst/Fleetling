@@ -42,7 +42,15 @@ for (const root of document.querySelectorAll("[data-shell]")) {
       cursorBlink: true,
       fontFamily: css("--mono") || "monospace",
       fontSize: 13,
-      theme: { background: css("--bg"), foreground: css("--fg"), cursor: css("--fg"), selectionBackground: css("--border") },
+      // The terminal sits on the console surface in both themes.
+      theme: {
+        background: css("--console"), foreground: css("--console-ink"), cursor: css("--accent"),
+        cursorAccent: css("--console"), selectionBackground: css("--console-sel"),
+        black: "#1b2228", red: "#f0736a", green: "#57c98a", yellow: "#f2c14e", blue: "#6fa8f0",
+        magenta: "#d58cf0", cyan: "#5cc8d6", white: "#d6dee4",
+        brightBlack: "#6b7884", brightRed: "#ff958c", brightGreen: "#7fe0aa", brightYellow: "#ffd76e",
+        brightBlue: "#94c1ff", brightMagenta: "#e8adff", brightCyan: "#86e2ec", brightWhite: "#ffffff",
+      },
     });
     fit = new FitAddon();
     term.loadAddon(fit);

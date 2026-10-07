@@ -3,13 +3,18 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild main.js editor.js shell.js --bundle --minify --format=iife --target=es2022 --outdir=../static/dist"
+    "build": "esbuild main.js editor.js shell.js fonts.css --bundle --minify --format=iife --target=es2022 --loader:.woff2=file --asset-names=fonts/[name]-[hash] --outdir=../static/dist && node font-licenses.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
+    "@fontsource/barlow": "^5.3.0",
+    "@fontsource/barlow-condensed": "^5.3.0",
+    "@fontsource/red-hat-mono": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "codemirror": "^6.0.2",
