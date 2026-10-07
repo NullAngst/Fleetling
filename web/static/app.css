@@ -294,6 +294,14 @@ button.link.small:hover { color: var(--bad); text-decoration-color: currentColor
 .seg form:last-child button { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
 .seg form:only-child button { border-radius: var(--radius-s); }
 .seg button:hover, .seg button:focus-visible { position: relative; z-index: 1; }
+/* A link in a group, like Remove next to Down, joins it the same way. */
+.seg > a.button { border-radius: 0; margin-left: -1px; }
+.seg > a.button:first-child { margin-left: 0; border-radius: var(--radius-s) 0 0 var(--radius-s); }
+.seg > a.button:last-child { border-radius: 0 var(--radius-s) var(--radius-s) 0; }
+.seg > a.button:only-child { border-radius: var(--radius-s); }
+.seg form:has(+ a.button) button { border-radius: 0; }
+.seg form:first-child:has(+ a.button) button { border-radius: var(--radius-s) 0 0 var(--radius-s); }
+.seg > a.button:hover, .seg > a.button:focus-visible { position: relative; z-index: 1; }
 
 /* ---------- Tabs ---------- */
 
@@ -384,10 +392,47 @@ dialog form { margin: 0; }
 .dialog-band { height: 6px; background: var(--accent); }
 /* The one loud thing in the app: destructive actions carry crane hazard
    marking, so Down never looks like Restart. */
-dialog.is-danger .dialog-band { height: 12px; background: repeating-linear-gradient(-45deg, var(--accent) 0 12px, var(--steel) 12px 24px); }
+dialog.is-danger .dialog-band, .hazard { height: 12px; background: repeating-linear-gradient(-45deg, var(--accent) 0 12px, var(--steel) 12px 24px); }
 .dialog-body { padding: 18px 22px 20px; }
 .dialog-title { font: 600 22px/1.15 var(--font-tight); margin: 0 0 14px; }
 dialog .actions { justify-content: flex-start; }
+
+/* ---------- Remove ---------- */
+
+/* The remove page is the danger confirm, written out as a page: the same
+   hazard band, then every option with what it would delete. */
+.removal { max-width: 920px; margin: 4px 0 28px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.removal-body { padding: 18px 22px 22px; }
+.removal .lede { margin-bottom: 4px; }
+.removal h2 { font-size: 19px; margin: 22px 0 8px; }
+.removal h3 { font: 600 14px var(--font); color: var(--ink-2); margin: 16px 0 6px; }
+.removal h3 .mono { font-size: 13px; font-weight: 500; }
+.removal h3 + p.small { margin: -2px 0 8px; }
+.picks { list-style: none; margin: 0 0 8px; padding: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.picks > li + li { border-top: 1px solid var(--line); }
+.pick { flex-direction: row; align-items: flex-start; gap: 12px; padding: 9px 12px; font-weight: 400; color: var(--ink); cursor: pointer; }
+.pick > input { margin-top: 3px; flex: none; }
+.pick:hover { background: var(--row-hover); }
+.pick.is-fixed, .pick.is-refused { cursor: default; }
+.pick.is-fixed:hover, .pick.is-refused:hover { background: none; }
+.pick.is-refused .path { color: var(--ink-3); }
+.pick:has(input:checked:not(:disabled)) { background: var(--tint-bad); box-shadow: inset 3px 0 0 var(--bad); }
+.pick-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.pick-main strong { font-weight: 600; }
+.pick-main .path { font-size: 13.5px; overflow-wrap: anywhere; }
+.pick-size { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; padding-top: 2px; }
+.pick-flag { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-s); padding: 0 6px; line-height: 20px; white-space: nowrap; }
+.pick .sub { list-style: none; margin: 6px 0 2px; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; }
+.pick .sub .tag { margin-left: 8px; }
+.pick-none { padding: 9px 12px; }
+.refused { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--ink-2); }
+.refused::before { content: ""; width: 7px; height: 7px; background: var(--warn); transform: rotate(45deg) translateY(-1px); flex: none; }
+.deletes { margin: 0 0 14px; padding-left: 20px; font-size: 13px; line-height: 1.7; }
+.confirm-field { max-width: 440px; margin: 18px 0 16px; color: var(--ink); }
+.confirm-field input { font-size: 14px; }
+.step-note { font-size: 13px; color: var(--ink-2); margin: 0 0 16px; padding-left: 14px; border-left: 3px solid var(--accent); overflow-wrap: anywhere; max-width: none; }
+button.danger .icon { color: #fff; }
+button:disabled, button:disabled:hover { opacity: .45; cursor: not-allowed; filter: none; }
 
 /* ---------- Misc pages ---------- */
 
@@ -426,6 +471,11 @@ ul.mono { padding-left: 20px; line-height: 1.7; }
   .facts > div { flex: 1 1 40%; border-right: 0; border-bottom: 1px solid var(--line); }
   .facts > div:last-child { flex: 1 1 100%; border-bottom: 0; }
   .toolbar .push { margin-left: 0; }
+  .removal-body { padding: 14px 14px 18px; }
+  /* The size drops under the path instead of squeezing it. */
+  .pick { flex-wrap: wrap; row-gap: 4px; }
+  .pick:has(.pick-size) .pick-main { flex-basis: calc(100% - 28px); }
+  .pick-size { margin-left: 28px; padding-top: 0; }
 
   body.bare { display: block; }
   .gate { padding: 28px 20px; }

@@ -1,0 +1,12 @@
+{{define "content"}}
+{{$d := .Data}}{{$j := $d.Job}}
+<nav class="crumbs" aria-label="Breadcrumb">{{if hasPrefix $j.Target "container/"}}<a href="/containers">Containers</a>{{else}}<a href="/">Stacks</a>{{end}}</nav>
+<h1>{{.Title}}</h1>
+<p class="muted">Started {{$j.Started.Format "2006-01-02 15:04:05"}}. The result also goes in the <a href="/actions?target={{$j.Target}}">action log</a>.</p>
+{{range $d.Command}}{{if hasPrefix . "fleetling: "}}<p class="mono step-note">{{.}}</p>{{else}}<p class="mono cmd">{{.}}</p>{{end}}{{end}}
+<section class="job" data-job="{{$j.ID}}">
+  <div class="job-head"><strong>Output</strong> <span class="job-status">Connecting...</span></div>
+  <pre class="job-out mono"></pre>
+</section>
+{{if $j.Back}}<p><a class="button" href="{{$j.Back}}">Done</a></p>{{end}}
+{{end}}

@@ -83,6 +83,8 @@ type Server struct {
 	selfIDs     func() []string
 	listIfaces  func(ctx context.Context, st store.Settings, slot string) ([]string, error)
 	now         func() time.Time
+	mountInfo   string                       // mount table for the deletion rules, "" for the real one
+	devOf       func(string) (uint64, error) // device IDs for the deletion rules, nil for the real ones
 
 	imp importState
 
@@ -199,6 +201,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /stacks/{folder}/review", s.requireAuth(s.reviewPage))
 	mux.HandleFunc("POST /stacks/{folder}/review", s.requireAuth(s.reviewApprove))
 	mux.HandleFunc("POST /stacks/{folder}/action/{action}", s.requireAuth(s.stackAction))
+	mux.HandleFunc("GET /stacks/{folder}/remove", s.requireAuth(s.stackRemovePage))
+	mux.HandleFunc("POST /stacks/{folder}/remove", s.requireAuth(s.stackRemove))
+	mux.HandleFunc("GET /jobs/{id}", s.requireAuth(s.jobPage))
 	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
 	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))
 	mux.HandleFunc("GET /stacks/{folder}/logs/ws", s.requireAuth(s.stackLogsSocket))
@@ -226,6 +231,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /containers/{slot}/{id}", s.requireAuth(s.containerPage))
 	mux.HandleFunc("GET /containers/{slot}/{id}/stats", s.requireAuth(s.containerStats))
 	mux.HandleFunc("POST /containers/{slot}/{id}/action/{action}", s.requireAuth(s.containerAction))
+	mux.HandleFunc("GET /containers/{slot}/{id}/remove", s.requireAuth(s.containerRemovePage))
+	mux.HandleFunc("POST /containers/{slot}/{id}/remove", s.requireAuth(s.containerRemove))
 	mux.HandleFunc("GET /containers/{slot}/{id}/logs/ws", s.requireAuth(s.containerLogsSocket))
 	mux.HandleFunc("GET /containers/{slot}/{id}/shell/ws", s.requireAuth(s.shellSocket))
 	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))

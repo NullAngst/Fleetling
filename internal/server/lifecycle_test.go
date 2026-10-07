@@ -30,12 +30,20 @@ case " $* " in
     case "$input" in *INVALID*) echo "services.app additional property bogus is not allowed" >&2; exit 15;; esac
     exit 0;;
   *" config --format json "*)
+    # A stack folder can carry its own resolved config for the test.
+    if [ -f .fake-config.json ]; then cat .fake-config.json; exit 0; fi
     printf '{"services":{"app":{"volumes":[{"type":"bind","source":"%s"}]}}}\n' "$FAKE_BIND"; exit 0;;
   *" up "*)
     [ -n "$FAKE_BIND" ] && mkdir -p "$FAKE_BIND"
     echo " Container app-1  Started"; exit 0;;
   *" pull "*) echo " app Pulled"; exit 0;;
-  *" down "*) echo " Container app-1  Removed"; exit 0;;
+  *" down "*)
+    # Something new shows up while down runs: a stack that uses a path.
+    if [ -n "$FAKE_LATE_DIR" ]; then
+      mkdir -p "$FAKE_LATE_DIR"
+      printf 'services:\n  late:\n    image: x\n    volumes:\n      - %s:/d\n' "$FAKE_LATE_BIND" > "$FAKE_LATE_DIR/compose.yaml"
+    fi
+    echo " Container app-1  Removed"; exit "${FAKE_DOWN_EXIT:-0}";;
   *" logs "*) echo "app-1  | hello from app"; echo "db-1   | ready"; exit 0;;
 esac
 exit 0

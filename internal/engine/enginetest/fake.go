@@ -198,6 +198,9 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 			for _, v := range c.Volumes {
 				mounts = append(mounts, map[string]any{"Type": "volume", "Name": v, "Destination": "/data"})
 			}
+			for _, m := range c.Mounts {
+				mounts = append(mounts, map[string]any{"Type": "bind", "Source": m.Source, "Destination": m.Destination})
+			}
 			nets := map[string]any{}
 			for _, n := range c.Networks {
 				nets[n] = map[string]any{"NetworkID": n}

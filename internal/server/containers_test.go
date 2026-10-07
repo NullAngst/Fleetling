@@ -79,7 +79,7 @@ func TestContainersPages(t *testing.T) {
 		}
 	}
 	detail := b.do("GET", "/containers/docker/"+giteaID, nil, nil).Body.String()
-	for _, want := range []string{"data-logs=\"/containers/docker/" + giteaID + "/logs/ws\"", "docker rm -f gitea", "every 5s"} {
+	for _, want := range []string{"data-logs=\"/containers/docker/" + giteaID + "/logs/ws\"", "/containers/docker/" + giteaID + "/remove", "every 5s"} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("detail page missing %q", want)
 		}

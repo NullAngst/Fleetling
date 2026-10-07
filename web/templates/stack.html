@@ -27,14 +27,15 @@
   <span class="muted">Writes {{$d.Folder.Dir}}/.fleetling.toml with project <span class="mono">{{$d.Folder.Project}}</span>. Nothing else changes.</span>
   {{if $d.Folder.ComposeFile}}<a class="button" href="/stacks/{{$d.Folder.Name}}/edit">{{template "i-edit"}}Edit</a>{{end}}
 {{else}}
-  {{range $d.ActionGroups}}
+  {{range $i, $group := $d.ActionGroups}}
   <div class="seg">
-    {{range .}}
+    {{range $group}}
     <form method="post" action="/stacks/{{$d.Folder.Name}}/action/{{.Key}}">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$d.Stack.Project}}?"{{if .Danger}} data-danger{{end}}>{{template "action-icon" .Key}}{{.Label}}</button>
     </form>
     {{end}}
+    {{if eq $i 2}}<a class="button" href="/stacks/{{$d.Folder.Name}}/remove">{{template "i-remove"}}Remove</a>{{end}}
   </div>
   {{end}}
   {{if $d.Folder.ComposeFile}}<a class="button push" href="/stacks/{{$d.Folder.Name}}/edit">{{template "i-edit"}}Edit</a>{{end}}

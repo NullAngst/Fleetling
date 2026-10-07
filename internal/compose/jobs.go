@@ -24,6 +24,8 @@ type Job struct {
 	Engine  string
 	Command string // what the action log stores, one line per step
 	Started time.Time
+	Label   string // what the job page calls it, e.g. "Remove gitea"
+	Back    string // where the job page links back to
 
 	mu       sync.Mutex
 	lines    []string
@@ -36,15 +38,29 @@ type Job struct {
 
 const maxJobLines = 20000
 
-// Step is one command inside a job.
+// Step is one command inside a job: a docker command, or work Fleetling
+// does itself, like deleting folders. Run returns an exit code the same
+// way a command does, and Show is what the action log records for it.
 type Step struct {
-	Cmd *exec.Cmd
+	Cmd  *exec.Cmd
+	Run  func(ctx context.Context, j *Job) int
+	Show string
+}
+
+// line is how a step appears in the action log.
+func (s Step) line() string {
+	if s.Cmd != nil {
+		return Quote(append([]string{"docker"}, s.Cmd.Args[1:]...))
+	}
+	return s.Show
 }
 
 // JobSpec describes a job before it starts.
 type JobSpec struct {
 	Target string
 	Engine string
+	Label  string
+	Back   string
 	Steps  []Step
 	// Before runs first; an error fails the job without running any step.
 	Before func(ctx context.Context, j *Job) error
@@ -168,10 +184,10 @@ func (js *Jobs) Start(spec JobSpec) (*Job, error) {
 	rand.Read(b)
 	var cmds []string
 	for _, s := range spec.Steps {
-		cmds = append(cmds, Quote(append([]string{"docker"}, s.Cmd.Args[1:]...)))
+		cmds = append(cmds, s.line())
 	}
 	j := &Job{
-		ID: hex.EncodeToString(b), Target: spec.Target, Engine: spec.Engine,
+		ID: hex.EncodeToString(b), Target: spec.Target, Engine: spec.Engine, Label: spec.Label, Back: spec.Back,
 		Command: strings.Join(cmds, "\n"), Started: time.Now(), changed: make(chan struct{}),
 	}
 	js.byID[j.ID] = j
@@ -195,7 +211,11 @@ func (js *Jobs) run(j *Job, spec JobSpec) {
 		if exit != 0 {
 			break
 		}
-		j.Line("$ " + Quote(append([]string{"docker"}, s.Cmd.Args[1:]...)))
+		if s.Cmd == nil {
+			exit = s.Run(ctx, j)
+			continue
+		}
+		j.Line("$ " + s.line())
 		exit = runStep(j, s.Cmd)
 		if exit != 0 {
 			j.Linef("fleetling: exit code %d", exit)

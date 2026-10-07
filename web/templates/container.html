@@ -20,10 +20,14 @@
   {{range $group := list "run" "end" "recreate"}}
   <div class="seg">
     {{range $d.Actions}}{{if eq (actionGroup .Key) $group}}
+    {{if eq .Key "remove"}}
+    <a class="button" href="/containers/{{$d.Slot}}/{{$c.ID}}/remove">{{template "action-icon" .Key}}{{.Label}}</a>
+    {{else}}
     <form method="post" action="/containers/{{$d.Slot}}/{{$c.ID}}/action/{{.Key}}">
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} {{$c.Name}}?"{{if .Danger}} data-danger{{end}}>{{template "action-icon" .Key}}{{.Label}}</button>
     </form>
+    {{end}}
     {{end}}{{end}}
   </div>
   {{end}}

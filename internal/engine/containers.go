@@ -34,6 +34,7 @@ type ContainerRow struct {
 	WorkDir string
 	Ports   []string
 	Created time.Time
+	Mounts  []compose.Mount
 }
 
 // ShortID is the 12-character form the CLI shows.
@@ -57,6 +58,9 @@ func rowFromSummary(c container.Summary) ContainerRow {
 	}
 	if c.Health != nil && c.Health.Status != container.NoHealthcheck {
 		r.Health = string(c.Health.Status)
+	}
+	for _, m := range c.Mounts {
+		r.Mounts = append(r.Mounts, compose.Mount{Type: string(m.Type), Name: m.Name, Source: m.Source, Destination: m.Destination})
 	}
 	seen := map[string]bool{}
 	for _, p := range c.Ports {
@@ -126,7 +130,7 @@ func (e *Client) Inspect(ctx context.Context, id string) (Detail, error) {
 		d.Env = c.Config.Env
 	}
 	for _, m := range c.Mounts {
-		d.Mounts = append(d.Mounts, compose.Mount{Type: string(m.Type), Source: m.Source, Destination: m.Destination})
+		d.Mounts = append(d.Mounts, compose.Mount{Type: string(m.Type), Name: m.Name, Source: m.Source, Destination: m.Destination})
 	}
 	if c.State != nil {
 		d.Running = c.State.Running

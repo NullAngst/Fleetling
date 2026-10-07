@@ -175,6 +175,11 @@ func ReadMeta(dir string) (*Meta, error) {
 	if err != nil {
 		return nil, err
 	}
+	return ParseMeta(b)
+}
+
+// ParseMeta checks the content of a .fleetling.toml.
+func ParseMeta(b []byte) (*Meta, error) {
 	var m Meta
 	md, err := toml.Decode(string(b), &m)
 	if err != nil {

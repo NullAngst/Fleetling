@@ -39,3 +39,11 @@ func (s *Store) SetBaseline(ctx context.Context, b Baseline) error {
 		b.Folder, b.Recorded.UnixMilli(), b.Source, b.Snapshot)
 	return err
 }
+
+// DeleteBaseline forgets a stack's baseline, once its folder is gone. A
+// stack made later in a folder with the same name starts unrecorded
+// instead of being compared with files that no longer exist.
+func (s *Store) DeleteBaseline(ctx context.Context, folder string) error {
+	_, err := s.db.ExecContext(ctx, "DELETE FROM stack_baselines WHERE folder = ?", folder)
+	return err
+}

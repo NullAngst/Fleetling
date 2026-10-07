@@ -1,0 +1,89 @@
+{{define "content"}}
+{{$d := .Data}}
+<nav class="crumbs" aria-label="Breadcrumb">{{if eq $d.Kind "stack"}}<a href="/">Stacks</a><a href="{{$d.Back}}">{{$d.Name}}</a>{{else}}<a href="/containers?engine={{$d.Slot}}">Containers</a><a href="{{$d.Back}}">{{$d.Name}}</a>{{end}}</nav>
+<h1>Remove {{if eq $d.Kind "container"}}container {{end}}<span class="mono">{{$d.Name}}</span></h1>
+
+{{if $d.Review}}
+<div class="msg msg-error">{{if eq $d.Review "modified"}}Files in this stack changed outside Fleetling.{{else}}Fleetling hasn't recorded this stack's files yet.{{end}} Removing runs <span class="mono">down</span> from those files and deletes paths they name, so <a href="/stacks/{{$d.Folder.Name}}/review?action=remove">review them first</a>.</div>
+<p><a href="{{$d.Back}}">Back</a></p>
+{{else if $d.Refusal}}
+<div class="msg msg-error">{{$d.Refusal}}</div>
+<p><a href="{{$d.Back}}">Back</a></p>
+{{else}}
+<form method="post" action="{{$d.Action}}" class="removal" data-remove data-name="{{$d.Name}}" data-base-cmd="{{$d.BaseCmd}}"{{if $d.StackDir}} data-stack-dir="{{(index $d.StackDir 0).Path}}"{{end}}>
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <div class="hazard"></div>
+  <div class="removal-body">
+    {{if eq $d.Kind "stack"}}
+    <p class="lede">Fleetling runs <span class="mono">down</span> first. If that fails, nothing below is deleted. Only what you tick goes; everything else stays on disk.</p>
+    <h2>Compose</h2>
+    <ul class="picks">
+      <li><label class="pick is-fixed"><input type="checkbox" checked disabled><span class="pick-main"><strong>Containers and stack networks</strong><span class="muted small">Always. This is what down does.</span></span><code class="pick-flag">down</code></label></li>
+      <li><label class="pick{{if not $d.Volumes}} is-refused{{end}}"><input type="checkbox" name="volumes" value="1" data-flag="-v"{{if $d.Vols}} checked{{end}}{{if not $d.Volumes}} disabled{{end}}>
+        <span class="pick-main"><strong>Named volumes</strong>
+        {{if $d.Volumes}}<span class="muted small">Their data goes with them. External volumes are never touched.</span>
+        <ul class="sub">{{range $d.Volumes}}<li><span class="mono">{{.Name}}</span>{{if .Anonymous}}<span class="tag">anonymous</span>{{end}}{{if not .Exists}} <span class="muted small">not created yet</span>{{end}}{{if .Others}} <span class="refused">also used by {{join .Others ", "}}; Docker keeps it while they exist</span>{{end}}</li>{{end}}</ul>
+        {{else}}<span class="muted small">This stack has none{{if $d.VolErr}}, as far as the engine said ({{$d.VolErr}}){{end}}.</span>{{end}}
+        </span><code class="pick-flag">-v</code></label></li>
+      <li><label class="pick{{if not $d.Images}} is-refused{{end}}"><input type="checkbox" name="images" value="1" data-flag="--rmi all"{{if $d.Imgs}} checked{{end}}{{if not $d.Images}} disabled{{end}}>
+        <span class="pick-main"><strong>Images</strong>
+        {{if $d.Images}}<span class="muted small">Pulled again on the next deploy. An image another container uses stays.</span>
+        <ul class="sub">{{range $d.Images}}<li class="mono">{{.}}</li>{{end}}</ul>{{else}}<span class="muted small">None found in the compose file.</span>{{end}}
+        </span><code class="pick-flag">--rmi all</code></label></li>
+    </ul>
+    {{else}}
+    <p class="lede">Fleetling removes the container first, stopping it if it runs. Named volumes stay. Only the folders you tick are deleted, after the container is gone.</p>
+    {{end}}
+
+    <h2>Folders</h2>
+    {{if $d.Blocked}}<div class="msg msg-error">{{$d.Blocked}}</div>{{end}}
+    {{if eq $d.Kind "stack"}}
+    <h3>Paths this stack created</h3>
+    <p class="muted small">Bind sources that didn't exist before the first deploy, so Docker made them as empty root-owned folders.</p>
+    {{template "pick-paths" (dict "Rows" $d.Created "Picked" $d.Picked "Blocked" $d.Blocked)}}
+    {{end}}
+    <h3>{{if eq $d.Kind "stack"}}Other bind sources{{else}}Bind sources{{end}} under <span class="mono">{{$d.Root}}</span></h3>
+    {{template "pick-paths" (dict "Rows" $d.Binds "Picked" $d.Picked "Blocked" $d.Blocked)}}
+    {{if eq $d.Kind "stack"}}
+    <h3>The stack folder</h3>
+    {{template "pick-paths" (dict "Rows" $d.StackDir "Picked" $d.Picked "Blocked" $d.Blocked)}}
+    {{end}}
+    {{if $d.Outside}}<p class="muted small">Never offered, since they're outside <span class="mono">{{$d.Root}}</span> or are the root itself: {{range $i, $p := $d.Outside}}{{if $i}}, {{end}}<span class="mono">{{$p}}</span>{{end}}.</p>{{end}}
+    <p class="muted small">Kept no matter what: the stack root, anything outside it, mount points, paths another stack or container uses, Fleetling's own data, and the ignore list. Each ticked path is checked again right before it goes.</p>
+
+    <h2>What runs</h2>
+    <p class="mono cmd" data-remove-cmd>{{$d.BaseCmd}}</p>
+    <div data-remove-then{{if not $d.Picked}} hidden{{end}}>
+      <p class="small">Then deletes, in this order:</p>
+      <ul class="mono deletes" data-remove-list>{{range $p, $_ := $d.Picked}}<li>{{$p}}</li>{{end}}</ul>
+    </div>
+
+    <label class="confirm-field" data-remove-confirm><span>Type <span class="mono">{{$d.Name}}</span> to confirm deleting volumes or folders</span>
+      <input name="confirm" class="mono" autocomplete="off" autocapitalize="off" spellcheck="false">
+    </label>
+    <div class="actions">
+      <button type="submit" class="danger" data-remove-submit>{{template "i-remove"}}Remove {{$d.Name}}</button>
+      <a href="{{$d.Back}}">Cancel</a>
+    </div>
+  </div>
+</form>
+{{end}}
+{{end}}
+
+{{define "pick-paths"}}
+<ul class="picks">
+{{range .Rows}}
+  <li><label class="pick{{if or (not .OK) $.Blocked}} is-refused{{end}}">
+    <input type="checkbox" name="path" value="{{.Path}}"{{if or (not .OK) $.Blocked}} disabled{{else if index $.Picked .Path}} checked{{end}}>
+    <span class="pick-main">
+      <span class="mono path">{{.Path}}</span>
+      <span class="muted small">{{.Note}}</span>
+      {{if .Refused}}<span class="refused">Kept: {{.Refused}}</span>{{end}}
+    </span>
+    {{if .OK}}<span class="pick-size mono">{{.SizeText}}</span>{{end}}
+  </label></li>
+{{else}}
+  <li class="pick-none muted small">None.</li>
+{{end}}
+</ul>
+{{end}}

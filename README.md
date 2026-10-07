@@ -6,14 +6,15 @@ It replaces the parts of Portainer CE that actually get used: stacks, containers
 
 ## Status
 
-This is phase 5 of 11. What works right now:
+This is phase 6 of 11. What works right now:
 
 - First-run setup, login, sessions, "log out everywhere", password change.
 - Settings: stack root, ignored folders, Docker and Podman endpoints with a Test button.
 - The stack list: every folder under the root with a compose file, plus every running Compose project the engines report.
 - Stacks: create, edit with a side-by-side diff, Deploy, Update, Restart, Recreate, Start, Stop and Down, each with live output in the browser.
 - Manage: one click turns an On disk folder into a managed stack.
-- Containers: list with stack and state filters, Start, Stop, Restart, Kill, Remove, and Recreate for containers in a managed stack.
+- Remove with folders: `down`, optionally with the stack's volumes and images, then only the folders you tick, each checked against seven safety rules first.
+- Containers: list with stack and state filters, Start, Stop, Restart, Kill, Remove (with the same folder options for its own bind mounts), and Recreate for containers in a managed stack.
 - Logs for one container or a whole stack, with follow, tail, since, timestamps, a filter, wrap and download.
 - A web shell into any running container, plus Inspect and live CPU, memory and network stats.
 - Networks: list with subnets and attached containers, create with bridge, macvlan, ipvlan or any other driver, connect and disconnect with a static IP and aliases, remove.
@@ -22,7 +23,7 @@ This is phase 5 of 11. What works right now:
 - The Portainer importer, through Portainer's API or straight from its data folder, plus a button to retire Portainer afterwards.
 - The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 
-After this phase Fleetling covers everything Portainer did on this server. "Remove with folders", the safety-railed delete for a stack and its data, arrives in phase 6. The full plan is in the build spec.
+Fleetling covers everything Portainer did on this server. Self-updates arrive in phase 7. The full plan is in the build spec.
 
 ## Prerequisites
 
@@ -184,6 +185,7 @@ The confirm dialog shows that exact line before anything runs. Output streams to
 | Start, Stop | `start`, `stop` |
 | Down | `down` |
 | Save and redeploy | `up -d --remove-orphans` |
+| Remove | `down`, with `-v` and `--rmi all` if you tick them, then the folders you tick. See "Removing a stack" below |
 
 A few things worth knowing:
 
@@ -191,7 +193,7 @@ A few things worth knowing:
 - Saving runs `docker compose config -q` first and refuses a file Compose rejects. Tick "Save anyway" to keep a half-finished file.
 - `.env` is saved at mode 600. On the Env tab, values for keys containing PASS, SECRET, TOKEN or KEY are blurred until you click them. If `.env` is a symlink to another file in the stack folder, the edit goes to that file and the link stays.
 - Files written into an existing folder keep that folder's owner. `/opt/jellyfin` stays owned by whoever owned it.
-- On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what the "remove with folders" option in phase 6 cleans up.
+- On the first deploy, Fleetling notes which bind sources don't exist yet, and records the ones Docker created as `created_paths` in `.fleetling.toml`. Docker makes those as root-owned folders, and they are what Remove offers to clean up.
 - If a compose file mounts the stack folder itself, like `- /opt/copyparty:/cfg`, the stack page says so. A compromised container that can write its own `compose.yaml` could add `privileged: true` or a `/:/host` mount. Fleetling catches that (see "Changes made outside Fleetling" below), but moving the app's data into a subfolder like `/opt/copyparty/cfg` means it can't happen in the first place. The same goes for any container that mounts `/opt` itself: it can also read `fleetling.db` in `/opt/fleetling/data`, which holds the session secret. Set `FLEETLING_DATA` to a path outside the root, on its own volume, if you run one.
 - Fleetling's own stack can be edited but not deployed, stopped or restarted from inside. The process would die halfway through. Self-updates arrive in phase 7; until then, update it from the host.
 
@@ -209,9 +211,46 @@ The scheduled auto-update (phase 11) runs the same check and skips a flagged sta
 
 Not covered: build contexts and Dockerfiles (they arrive with builds in phase 9), and files behind `configs:` and `secrets:`, which apps often rewrite themselves.
 
+## Removing a stack
+
+Remove sits next to Down on the stack page and opens a page of its own, since it can delete data. Everything except the first line is off until you tick it:
+
+| Option | Runs |
+| --- | --- |
+| Containers and stack networks | `down`, always |
+| Named volumes | `down -v`. Each volume is listed by name; external ones are never touched |
+| Images | `down --rmi all`, each one listed |
+| Paths this stack created | Deletes each `created_paths` entry, with its size |
+| Other bind sources under the root | Deletes each, with its size |
+| The stack folder itself | Deletes `/opt/<folder>`, compose file and all |
+
+Ticking volumes or any folder means typing the project name to confirm. The page shows the exact `down` line it will run and the list of what it deletes, in order.
+
+It runs `down` first. If that fails, nothing is deleted. Then it checks every ticked path again, against a fresh look at every stack and container, and deletes them one at a time, deepest first and the stack folder last. Every deleted path gets its own line in the action log with its size, and so does every path it kept and why.
+
+The rules each path has to pass, every one of them tested:
+
+1. It's under the stack root, and it isn't the root itself.
+2. With symlinks resolved, it's still under the root. A link pointing out of the root is refused.
+3. No other stack's compose file names it, nothing inside it, and nothing it sits inside. Same for every mount of every other container on every engine. Fleetling runs `docker compose config` on every stack on disk to build that list, so `${VARIABLES}` count.
+4. It isn't a mount point and has none inside it. Fleetling reads the kernel's mount table and also compares device IDs, so your NAS at `/opt/media` survives.
+5. Deleting never follows a symlink. A link is removed as a link, and its target stays.
+6. Bind sources outside the root, like `/dev/dri` or the Docker socket, are never offered. The page lists them as "never offered" so you know they were seen.
+7. You see the full list with sizes before anything happens.
+
+Fleetling's own data folder and anything on the ignore list are never deleted either.
+
+A few things worth knowing:
+
+- `created_paths` lives in `.fleetling.toml`, which a container that mounts its stack folder can write. So Remove reads it from the last approved copy of the file, a changed `.fleetling.toml` sends you to review first like any other action, and every entry still has to pass all seven rules. Listing `/etc` or another stack's folder there gets you nothing.
+- If an engine you have configured doesn't answer, no folder can be ticked, since its containers might use any of them. `down` alone still works. Turn the endpoint off in Settings if you don't use it.
+- Fleetling only sees mounts that existed when its container started, since Docker gives bind mounts private propagation by default. If you mount shares under the root after boot, restart Fleetling afterwards, or add `rslave` to the root mount so new mounts show up inside: `- /opt:/opt:rslave`. That's propagation, not an SELinux label, so the `:z` warning above doesn't apply to it.
+- Fleetling's own stack and its own container can't be removed from inside.
+- Try it on a copy of a stack or two first, in a VM if you can. This is the one part of Fleetling that deletes data.
+
 ## Containers, logs and the shell
 
-Container actions go through the Engine API, the same calls `docker stop` and friends make. The confirm shows the equivalent command, like `docker rm -f gitea`, and that line goes in the action log. Remove is `rm -f`: it stops the container and deletes it, and never touches named volumes or anything on disk. Recreate on a container in a managed stack runs `docker compose ... up -d --force-recreate --no-deps <service>`, so it picks up compose file changes the way Compose would.
+Container actions go through the Engine API, the same calls `docker stop` and friends make. The confirm shows the equivalent command, like `docker kill gitea`, and that line goes in the action log. Remove opens the same kind of page as a stack's: it runs `docker rm -f` (stop and delete, named volumes stay) and offers the container's own bind sources under the root, with the same rules and the same typed confirm. A path another service in the same stack uses is kept. Recreate on a container in a managed stack runs `docker compose ... up -d --force-recreate --no-deps <service>`, so it picks up compose file changes the way Compose would.
 
 Logs keep their colors. Containers without a TTY send stdout and stderr interleaved with 8-byte frame headers; Fleetling splits those properly, and stderr lines show in red. The stack Logs tab runs `docker compose logs`, so every line carries its service name. Following stops the moment you leave the page.
 
@@ -267,6 +306,15 @@ Release binaries for linux amd64 and arm64 are attached to each `v*` tag by the 
 Fleetling always runs on the newest release of everything. The deps workflow runs every Monday: it updates every Go module and npm package, runs the tests, rebuilds the image with `--pull`, and opens a PR. The tradeoff is that a bad upstream release can break a build without warning. Tests gate every publish, so a broken release blocks the PR instead of reaching your server.
 
 After the first push, run the deps workflow once by hand from the Actions tab. That commits `go.sum`. Until then, the Dockerfile and CI create it with `go mod tidy`, which checks every module against the public checksum database. The workflow needs "Allow GitHub Actions to create and approve pull requests" switched on under Settings, Actions, General.
+
+The two third-party actions, `softprops/action-gh-release` and `peter-evans/create-pull-request`, are pinned to a commit instead of a tag, since a tag can be moved to different code and the release job holds a write token. The deps workflow moves each pin to the commit of that action's newest release, so you never bump them by hand. It needs one token to do that, since GitHub never lets a workflow's built-in token change files under `.github/workflows`:
+
+1. On GitHub, open Settings, Developer settings, Personal access tokens, Fine-grained tokens, and generate a new token.
+2. Under Repository access, pick only this repository.
+3. Under Permissions, set Contents, Pull requests and Workflows to Read and write.
+4. In this repository, open Settings, Secrets and variables, Actions, and add it as a secret named `DEPS_TOKEN`.
+
+Without it, the workflow still updates everything else and leaves a warning in the run when an action has a newer release. With it, the weekly PR also runs CI, which PRs opened by the built-in token don't. Fine-grained tokens expire. When the warnings come back, make a new one.
 
 ## License
 

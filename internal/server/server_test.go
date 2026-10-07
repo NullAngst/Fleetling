@@ -56,7 +56,9 @@ func (f *fakeEngine) ContainerMounts(context.Context, string) ([]compose.Mount, 
 func (f *fakeEngine) ContainerLabels(context.Context, string) (map[string]string, error) {
 	return f.labels, f.err
 }
-func (f *fakeEngine) Close() error { return nil }
+func (f *fakeEngine) Containers(context.Context) ([]engine.ContainerRow, error) { return nil, f.err }
+func (f *fakeEngine) Volumes(context.Context) ([]engine.VolumeRow, error)       { return nil, f.err }
+func (f *fakeEngine) Close() error                                              { return nil }
 
 type harness struct {
 	t         *testing.T
@@ -103,6 +105,12 @@ func newHarness(t *testing.T) *harness {
 	s.runner = compose.Runner{Docker: script}
 	t.Setenv("FAKE_DOCKER_LOG", h.dockerLog)
 	s.selfIDs = func() []string { return []string{"abc123"} }
+	// An empty mount table, so the deletion rules see only the mount
+	// points a test adds.
+	s.mountInfo = filepath.Join(dir, "mountinfo")
+	if err := os.WriteFile(s.mountInfo, []byte("22 1 8:1 / / rw - ext4 /dev/sda1 rw\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return h
 }
 

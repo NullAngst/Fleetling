@@ -167,6 +167,42 @@ for (const box of document.querySelectorAll("[data-job]")) {
   ws.onerror = () => { status.textContent = "Lost the connection. The action keeps running; reload to check."; };
 }
 
+// Remove page: the command line follows the ticked options, the list of
+// what gets deleted follows the ticked paths in the order the server
+// deletes them (deepest first, the stack folder last), and the confirm
+// field shows once anything needs it. The server checks all of it again.
+for (const form of document.querySelectorAll("form[data-remove]")) {
+  const cmd = form.querySelector("[data-remove-cmd]");
+  const then = form.querySelector("[data-remove-then]");
+  const list = form.querySelector("[data-remove-list]");
+  const confirmBox = form.querySelector("[data-remove-confirm]");
+  const input = confirmBox.querySelector("input");
+  const submit = form.querySelector("[data-remove-submit]");
+  const depth = (p) => p.split("/").length;
+  const sync = () => {
+    const flags = [...form.querySelectorAll("input[data-flag]:checked")].map((i) => i.dataset.flag);
+    cmd.textContent = [form.dataset.baseCmd, ...flags].join(" ");
+    const paths = [...form.querySelectorAll('input[name="path"]:checked')].map((i) => i.value);
+    paths.sort((a, b) => {
+      if (a === form.dataset.stackDir) return 1;
+      if (b === form.dataset.stackDir) return -1;
+      return depth(b) - depth(a) || (a < b ? -1 : 1);
+    });
+    list.replaceChildren(...paths.map((p) => {
+      const li = document.createElement("li");
+      li.textContent = p;
+      return li;
+    }));
+    then.hidden = paths.length === 0;
+    const needs = paths.length > 0 || !!form.querySelector('input[name="volumes"]:checked');
+    confirmBox.hidden = !needs;
+    submit.disabled = needs && input.value.trim() !== form.dataset.name;
+  };
+  form.addEventListener("change", sync);
+  form.addEventListener("input", sync);
+  sync();
+}
+
 // Blurred secrets on the env tab: click or Enter to show.
 document.addEventListener("click", (e) => {
   const s = e.target.closest(".secret");

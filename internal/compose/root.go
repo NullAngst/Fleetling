@@ -11,6 +11,7 @@ import (
 // Mount is one mount of Fleetling's own container, as the engine reports it.
 type Mount struct {
 	Type        string // "bind", "volume", ...
+	Name        string // volume name, for volume mounts
 	Source      string // host path
 	Destination string // path inside the container
 }
