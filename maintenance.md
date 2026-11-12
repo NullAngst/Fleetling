@@ -124,4 +124,12 @@ The helper rolls back on its own when the new version doesn't come up healthy. I
 3. Recreate from it without building: `cd /opt/fleetling && docker compose up -d --no-build`
 4. Open the Action log and filter on the stack, and read `changes.md` for what the update changed.
 
+## 10. Making a release, when you want one
+
+1. Open Releases, click Draft a new release.
+2. Under Choose a tag, type a new tag like `v1.2.0` and click Create new tag. Write the notes, then click Publish release.
+3. Open Actions, click build on the left, then Run workflow.
+4. Under Use workflow from, open Tags and pick that tag. Click the green Run workflow button.
+5. When the run is green, the release has `fleetling-linux-amd64`, `fleetling-linux-arm64` and `SHA256SUMS` attached. A red release job says why in its first step: a branch was picked instead of the tag, or the release doesn't exist yet.
+
 Now Fleetling is checked, updated and backed up, and you know what changed since last month.

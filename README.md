@@ -444,7 +444,20 @@ You need Go and Node, latest stable of each.
 
 Skipping step 1 still builds; the pages then load without JavaScript and fall back to your system fonts.
 
-Release binaries for linux amd64 and arm64 are attached to each `v*` tag by the build workflow.
+### Making a release
+
+Static binaries for linux amd64 and arm64, plus a `SHA256SUMS` file, get attached to a release you make yourself:
+
+1. Open Releases, click Draft a new release.
+2. Under Choose a tag, type a new tag like `v1.2.0` and click Create new tag. Fill in the title and notes.
+3. Click Publish release.
+4. Open Actions, click build on the left.
+5. Click Run workflow. Under Use workflow from, open Tags and pick the tag you just made.
+6. Click the green Run workflow button.
+
+The tests, both integration jobs and the image build run first, on exactly the code in that tag. If they pass, the binaries land on the release. Pushing a tag on its own builds nothing.
+
+Two ways it stops on purpose, with the reason in the run: you picked a branch instead of the tag, or there's no release for that tag yet. Running it twice on the same tag replaces the files.
 
 ### Dependencies
 
@@ -454,7 +467,7 @@ The image gets kompose and podlet at build time. podlet comes from `cargo instal
 
 After the first push, run the deps workflow once by hand from the Actions tab. That commits `go.sum`. Until then, the Dockerfile and CI create it with `go mod tidy`, which checks every module against the public checksum database. The workflow needs "Allow GitHub Actions to create and approve pull requests" switched on under Settings, Actions, General.
 
-The two third-party actions, `softprops/action-gh-release` and `peter-evans/create-pull-request`, are pinned to a commit instead of a tag, since a tag can be moved to different code and the release job holds a write token. The deps workflow moves each pin to the commit of that action's newest release, so you never bump them by hand. It needs one token to do that, since GitHub never lets a workflow's built-in token change files under `.github/workflows`:
+The one third-party action, `peter-evans/create-pull-request`, is pinned to a commit instead of a tag, since a tag can be moved to different code and that job holds a write token. The release job uses GitHub's own `gh` CLI on the runner, so it has no third-party action at all. The deps workflow moves each pin to the commit of that action's newest release, so you never bump them by hand. It needs one token to do that, since GitHub never lets a workflow's built-in token change files under `.github/workflows`:
 
 1. On GitHub, open Settings, Developer settings, Personal access tokens, Fine-grained tokens, and generate a new token.
 2. Under Repository access, pick only this repository.

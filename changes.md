@@ -1,3 +1,11 @@
+2026.11.12 - Backend overhaul: release flow
+- Releases are made by hand: make the release and its tag on the Releases page, then run the build workflow on that tag from the Actions tab
+- The build workflow no longer runs on a tag push; it has a Run workflow button instead
+- The release job checks it was run on a tag that has a release, and says which mistake it was when not
+- Binaries are attached with gh release upload on the runner, replacing the softprops/action-gh-release action
+- README section "Making a release" with the steps
+Reasons for changes: A pushed tag built and released on its own, which isn't how I make releases. Making the release first and then running the build on its tag keeps the release notes and the build in my hands, and drops one third-party action that held a write token.
+
 2026.11.12 - Feature: self-management, Podman, builds, converter and auto-update
 - Fleetling's own stack runs Update and Restart through a helper container (fleetling updater) that builds or pulls, runs up -d, waits 60 seconds for healthy, and re-tags the old image IDs and runs up -d --no-build when it isn't; every step goes to last-update.log
 - The helper tags the current image <name>:fleetling-previous before building, since Docker's containerd image store deletes an untagged image the moment no container uses it
