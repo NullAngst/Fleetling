@@ -1,10 +1,16 @@
 name: build
 
+# Pushes and PRs run the checks. Releases are made by hand:
+#   1. Releases, Draft a new release, make a new tag (v1.2.3), publish.
+#   2. Actions, build, Run workflow, pick that tag under "Use workflow
+#      from", Run workflow.
+# The checks run on the tag, then the release job attaches the binaries
+# to the release. Pushing a tag on its own builds nothing.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -124,12 +130,26 @@ jobs:
           docker run --rm --entrypoint podlet fleetling:ci --version
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, integration-docker, integration-podman]
+    # Only a manual run attaches anything. Run on a branch, the checks run
+    # and this job stops with a message saying to pick the tag.
+    if: github.event_name == 'workflow_dispatch'
+    needs: [test, integration-docker, integration-podman, image]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Run on a tag with a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::This run is on the branch $GITHUB_REF_NAME. Pick the release's tag under \"Use workflow from\" instead."
+            exit 1
+          fi
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::There is no release for $GITHUB_REF_NAME. Make it on the Releases page first, then run this again on the tag."
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           # No job here needs to push with git, so keep the token out of
@@ -155,9 +175,10 @@ jobs:
               -o dist/fleetling-linux-$arch ./cmd/fleetling
           done
           cd dist && sha256sum fleetling-* > SHA256SUMS
-      # Third-party action pinned to a commit, so a moved tag can't swap the
-      # code that holds this job's write token. The deps workflow moves the
-      # pin to each new release.
-      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          files: dist/*
+      # GitHub's own CLI, which every runner has, so no third-party action
+      # holds this job's write token. --clobber replaces the files if the
+      # workflow is run again on the same tag.
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
