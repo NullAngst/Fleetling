@@ -50,6 +50,8 @@ type Stack struct {
 	Total         int
 	Warnings      []string
 	Review        string // set by the server: "", "modified" or "unrecorded"
+	UpdateResult  string // set by the server: the last auto-update result, ok/failed/skipped
+	UpdateMsg     string
 }
 
 // Label is the text for the status column. Managed stacks show their run

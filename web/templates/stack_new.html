@@ -14,10 +14,11 @@
     </label>
     {{if gt (len $d.Engines) 1}}
     <label>Engine
-      <select name="engine">{{range $d.Engines}}<option value="{{.}}" {{if eq . $d.Engine}}selected{{end}}>{{.}}</option>{{end}}</select>
+      <select name="engine" data-engine-suggest>{{range $d.Engines}}<option value="{{.}}" {{if eq . $d.Engine}}selected{{end}}>{{.}}</option>{{end}}</select>
     </label>
     {{else}}<input type="hidden" name="engine" value="{{$d.Engine}}">{{end}}
   </div>
+  <p class="notice-line" data-engine-why {{if not $d.EngineWhy}}hidden{{end}}>{{$d.EngineWhy}}</p>
   {{template "editors" $d}}
   <label class="check"><input type="checkbox" name="deploy" value="1" {{if $d.Deploy}}checked{{end}}> Deploy now</label>
   {{if $d.ValidationErr}}<label class="check"><input type="checkbox" name="force" value="1"> Save anyway</label>{{end}}

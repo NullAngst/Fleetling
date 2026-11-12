@@ -17,7 +17,7 @@ type Mount struct {
 }
 
 // Paths that can never be a stack root. "/" would put every host path
-// "under the root", which the deletion rules in a later phase rely on not
+// "under the root", which the deletion rules rely on not
 // being true.
 var forbiddenRoots = []string{"/", "/proc", "/sys", "/dev", "/run", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/var/run"}
 

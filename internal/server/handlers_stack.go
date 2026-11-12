@@ -16,6 +16,7 @@ import (
 
 	"github.com/NullAngst/Fleetling/internal/compose"
 	"github.com/NullAngst/Fleetling/internal/store"
+	"github.com/NullAngst/Fleetling/internal/updater"
 )
 
 type actionButton struct {
@@ -24,6 +25,8 @@ type actionButton struct {
 	Command string
 	Danger  bool
 }
+
+type selfOff struct{ Key, Label, Reason string }
 
 type envLine struct {
 	Raw    string
@@ -50,6 +53,15 @@ type stackPageData struct {
 	Services      []serviceRow
 	ActionGroups  [][]actionButton // toolbar groups: bring up, run state, tear down
 	Self          bool
+	CanMove       bool // both engines configured, managed, not Fleetling itself
+	HasBuild      bool // a service has build:, so the Build button shows
+	Built         bool // just ran a build: offer to redeploy
+	Redeploy      string
+	BuildPartial  bool // the build context was too big to cover fully
+	Updates       updatesTab
+	SelfActions   []actionButton // Update and Restart through the helper
+	SelfDisabled  []selfOff
+	SelfErr       string // why the helper command could not be built
 	FolderMounted []string
 	JobID         string
 	Recent        []store.Action
@@ -96,7 +108,7 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d := stackPageData{Folder: f, Tab: r.URL.Query().Get("tab")}
 	switch d.Tab {
-	case "env", "services", "history", "logs":
+	case "env", "services", "history", "logs", "convert", "updates":
 	default:
 		d.Tab = "compose"
 	}
@@ -149,9 +161,26 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 
 	if si, ok := s.self(ctx, st); ok && si.is(f) {
 		d.Self = true
+		for _, a := range []struct{ key, label, mode string }{{"update", "Update", updater.ModeUpdate}, {"restart", "Restart", updater.ModeRestart}} {
+			cmd, err := s.selfCommand(ctx, st, f, si, a.mode)
+			if err != nil {
+				d.SelfErr = err.Error()
+				break
+			}
+			d.SelfActions = append(d.SelfActions, actionButton{Key: a.key, Label: a.label, Command: cmd})
+		}
+		for _, x := range selfDisabled {
+			d.SelfDisabled = append(d.SelfDisabled, selfOff{x.Key, x.Label, x.Reason})
+		}
 	}
 	if rs, err := s.reviewFor(ctx, f); err == nil {
 		d.Review, d.ReviewCount = rs.State, len(rs.Changes)
+		d.BuildPartial = rs.Current.BuildPartial
+	}
+	d.CanMove = f.Meta != nil && !d.Self && len(engineSlots(st)) > 1
+	d.HasBuild = f.Meta != nil && !d.Self && compose.HasBuild([]byte(d.Compose))
+	if t, err := s.target(st, f); err == nil && d.HasBuild && r.URL.Query().Get("built") == "1" {
+		d.Built, d.Redeploy = true, s.commandLine(t, redeploy)
 	}
 	if t, err := s.target(st, f); err == nil {
 		group := map[string]int{"deploy": 0, "update": 0, "recreate": 0, "restart": 1, "start": 1, "stop": 1, "down": 2}
@@ -170,6 +199,9 @@ func (s *Server) stackPage(w http.ResponseWriter, r *http.Request) {
 		d.JobID = id
 	}
 	d.Recent, _ = s.store.ListActions(ctx, f.Name, 10, 0)
+	if d.Tab == "updates" && f.Meta != nil {
+		d.Updates = s.updatesTabData(ctx, st, f)
+	}
 
 	p := s.page(r, f.Name, "stacks", d)
 	switch r.URL.Query().Get("saved") {
@@ -266,7 +298,26 @@ func (s *Server) stackAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if si, ok := s.self(ctx, st); ok && si.is(f) {
-		http.Error(w, "this is Fleetling's own stack; it can't run Compose on itself from inside (the Update button for it arrives with self-management)", http.StatusConflict)
+		mode := ""
+		switch a.Key {
+		case "update":
+			mode = updater.ModeUpdate
+		case "restart":
+			mode = updater.ModeRestart
+		default:
+			http.Error(w, "this is Fleetling's own stack; only Update and Restart run on it, through the update helper", http.StatusConflict)
+			return
+		}
+		err := s.runSelfHelper(ctx, st, f, si, mode)
+		if errors.Is(err, errNeedsReview) {
+			http.Redirect(w, r, "/stacks/"+f.Name+"/review?action="+a.Key, http.StatusSeeOther)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		http.Redirect(w, r, "/self/updating?mode="+mode, http.StatusSeeOther)
 		return
 	}
 	job, err := s.runAction(ctx, st, f, a)
@@ -300,7 +351,7 @@ func (s *Server) jobSocket(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	c, err := websocket.Accept(w, r, nil)
+	c, err := s.acceptWS(w, r)
 	if err != nil {
 		return // Accept already wrote the error response
 	}

@@ -21,11 +21,8 @@
   </div>
   <div class="field-row" data-show-driver="macvlan ipvlan">
     <label>Parent interface
-      <select name="parent">
-        <option value=""></option>
-        {{range $d.Ifaces}}<option {{if eq . $s.Parent}}selected{{end}}>{{.}}</option>{{end}}
-      </select>
-      {{if $d.IfErr}}<small class="warn">Could not list the host's interfaces: {{$d.IfErr}}</small>{{end}}
+      {{if $d.LazyIfaces}}<span hx-post="/networks/ifaces?engine={{$d.Slot}}" hx-trigger="load" hx-swap="outerHTML"><select name="parent"><option value="">Listing the host's interfaces...</option></select></span>
+      {{else}}{{template "ifaces-select" (dict "Ifaces" $d.Ifaces "IfErr" $d.IfErr "Parent" $s.Parent)}}{{end}}
     </label>
     <label>Or type one <input name="parent_other" class="mono" placeholder="eth0, could be enp0s3"></label>
     <label data-show-driver="ipvlan">ipvlan mode

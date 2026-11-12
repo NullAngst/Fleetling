@@ -1,7 +1,5 @@
 // Package compose knows about stacks on disk: discovery, metadata, project
 // names, and how folders line up with what the engines are running.
-//
-// Later phases add the runner that shells out to `docker compose` here too.
 package compose
 
 import (

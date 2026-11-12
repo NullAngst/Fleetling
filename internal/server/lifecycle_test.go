@@ -36,7 +36,7 @@ case " $* " in
   *" up "*)
     [ -n "$FAKE_BIND" ] && mkdir -p "$FAKE_BIND"
     echo " Container app-1  Started"; exit 0;;
-  *" pull "*) echo " app Pulled"; exit 0;;
+  *" pull "*) echo " app Pulled"; exit "${FAKE_PULL_EXIT:-0}";;
   *" down "*)
     # Something new shows up while down runs: a stack that uses a path.
     if [ -n "$FAKE_LATE_DIR" ]; then
@@ -277,7 +277,10 @@ func TestManageOnDiskFolder(t *testing.T) {
 	}
 }
 
-func TestSelfStackRefusesActions(t *testing.T) {
+// Phase 7: Fleetling's own stack runs Update and Restart through the
+// helper container, refuses Stop, Down and Remove, and passes drift review
+// like every other stack.
+func TestSelfStackUsesHelper(t *testing.T) {
 	h := newHarness(t)
 	b := h.browser()
 	h.setUp(b)
@@ -290,11 +293,71 @@ func TestSelfStackRefusesActions(t *testing.T) {
 	fe := h.engines[store.DefaultDockerHost]
 	fe.mounts = []compose.Mount{{Type: "bind", Source: h.root, Destination: h.root}}
 	fe.labels = map[string]string{"com.docker.compose.project": "fleetling", "com.docker.compose.project.working_dir": dir}
-	if w := b.do("POST", "/stacks/fleetling/action/down", url.Values{"csrf": {b.token("/stacks/fleetling")}}, nil); w.Code != http.StatusConflict {
-		t.Errorf("down on self: %d", w.Code)
+	fe.imageID = "sha256:selfimage"
+	tok := b.token("/stacks/fleetling")
+
+	for _, a := range []string{"down", "stop", "deploy"} {
+		if w := b.do("POST", "/stacks/fleetling/action/"+a, url.Values{"csrf": {tok}}, nil); w.Code != http.StatusConflict {
+			t.Errorf("%s on self: %d", a, w.Code)
+		}
 	}
-	if !strings.Contains(b.do("GET", "/stacks/fleetling", nil, nil).Body.String(), "Fleetling's own stack") {
-		t.Error("self stack page has no explanation")
+	if w := b.do("POST", "/stacks/fleetling/remove", url.Values{"csrf": {tok}}, nil); w.Code == http.StatusSeeOther {
+		t.Error("remove on self was accepted")
+	}
+	page := b.do("GET", "/stacks/fleetling", nil, nil).Body.String()
+	for _, want := range []string{
+		"docker run --rm -d --name fleetling-updater -v /var/run/docker.sock:/var/run/docker.sock -v " + h.root + ":" + h.root,
+		"sha256:selfimage updater --dir " + dir + " --mode update",
+		"--mode restart",
+		"Down removes Fleetling", "leaves nothing running",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("self stack page missing %q", want)
+		}
+	}
+
+	// Update starts the helper and sends the browser to the waiting page.
+	w := b.do("POST", "/stacks/fleetling/action/update", url.Values{"csrf": {tok}}, nil)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/self/updating?mode=update" {
+		t.Fatalf("update on self: %d %s %s", w.Code, w.Header().Get("Location"), w.Body.String())
+	}
+	log, _ := os.ReadFile(h.dockerLog)
+	if !strings.Contains(string(log), "unix:///var/run/docker.sock run --rm -d --name fleetling-updater") ||
+		!strings.Contains(string(log), "-e FLEETLING_ROOT="+h.root) || !strings.Contains(string(log), "--dir "+dir+" --mode update") {
+		t.Errorf("helper not started as expected:\n%s", log)
+	}
+	acts, _ := h.s.store.ListActions(context.Background(), "fleetling", 5, 0)
+	if len(acts) == 0 || !strings.Contains(acts[0].Command, "fleetling-updater") {
+		t.Errorf("helper start not in the action log: %+v", acts)
+	}
+	if p := b.do("GET", "/self/updating?mode=update", nil, nil).Body.String(); !strings.Contains(p, `data-boot="`+h.s.boot+`"`) {
+		t.Error("updating page has no boot ID to compare against")
+	}
+	if hz := b.do("GET", "/healthz", nil, nil); hz.Header().Get("X-Fleetling-Boot") != h.s.boot {
+		t.Error("/healthz does not send the boot ID")
+	}
+
+	// A second helper is refused while the first exists.
+	fe.exists = map[string]bool{"fleetling-updater": true}
+	if w := b.do("POST", "/stacks/fleetling/action/restart", url.Values{"csrf": {tok}}, nil); w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "already running") {
+		t.Errorf("second helper: %d %s", w.Code, w.Body.String())
+	}
+	fe.exists = nil
+
+	// An unreviewed change to Fleetling's own compose file blocks its update.
+	os.WriteFile(filepath.Join(dir, "compose.yaml"), []byte("services: {fleetling: {image: evil}}\n"), 0o644)
+	if w := b.do("POST", "/stacks/fleetling/action/update", url.Values{"csrf": {tok}}, nil); w.Code != http.StatusSeeOther || !strings.Contains(w.Header().Get("Location"), "/review") {
+		t.Errorf("drifted self update: %d %s", w.Code, w.Header().Get("Location"))
+	}
+
+	// The log page shows last-update.log, and only to a logged-in browser.
+	os.MkdirAll(h.s.cfg.DataDir, 0o700)
+	os.WriteFile(filepath.Join(h.s.cfg.DataDir, "last-update.log"), []byte("x rolling back\nx FAILED: rolled back\n"), 0o600)
+	if p := b.do("GET", "/self/last-update", nil, nil).Body.String(); !strings.Contains(p, "rolling back") || !strings.Contains(p, "did not finish cleanly") {
+		t.Error("last update page does not show the log")
+	}
+	if w := h.browser().do("GET", "/self/log", nil, nil); w.Code != http.StatusSeeOther {
+		t.Errorf("log readable without a session: %d", w.Code)
 	}
 }
 

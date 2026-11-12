@@ -321,7 +321,7 @@ func (s *Server) containerLogsSocket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	c, err := websocket.Accept(w, r, nil)
+	c, err := s.acceptWS(w, r)
 	if err != nil {
 		return
 	}
@@ -382,7 +382,7 @@ func (s *Server) stackLogsSocket(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("timestamps") == "1" {
 		args = append(args, "--timestamps")
 	}
-	c, err := websocket.Accept(w, r, nil)
+	c, err := s.acceptWS(w, r)
 	if err != nil {
 		return
 	}
@@ -462,7 +462,7 @@ func (s *Server) shellSocket(w http.ResponseWriter, r *http.Request) {
 	user := strings.TrimSpace(q.Get("user"))
 	cols, rows := clampSize(q.Get("cols"), 80), clampSize(q.Get("rows"), 24)
 
-	c, err := websocket.Accept(w, r, nil)
+	c, err := s.acceptWS(w, r)
 	if err != nil {
 		return
 	}

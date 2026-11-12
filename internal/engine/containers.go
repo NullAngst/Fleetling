@@ -103,6 +103,7 @@ func (e *Client) Containers(ctx context.Context) ([]ContainerRow, error) {
 // Detail is one container's inspect output, plus the raw JSON.
 type Detail struct {
 	ContainerRow
+	ImageID   string // the image the container runs, sha256:..., stable while tags move
 	Running   bool
 	Tty       bool
 	StartedAt string
@@ -122,7 +123,7 @@ func (e *Client) Inspect(ctx context.Context, id string) (Detail, error) {
 		return Detail{}, err
 	}
 	c := res.Container
-	d := Detail{ContainerRow: ContainerRow{ID: c.ID, Name: strings.TrimPrefix(c.Name, "/")}}
+	d := Detail{ContainerRow: ContainerRow{ID: c.ID, Name: strings.TrimPrefix(c.Name, "/")}, ImageID: c.Image}
 	if c.Config != nil {
 		d.Image = c.Config.Image
 		d.Tty = c.Config.Tty

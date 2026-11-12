@@ -40,7 +40,9 @@ const maxJobLines = 20000
 
 // Step is one command inside a job: a docker command, or work Fleetling
 // does itself, like deleting folders. Run returns an exit code the same
-// way a command does, and Show is what the action log records for it.
+// way a command does, and Show is what the action log records for it. A
+// Cmd step with Show set is displayed as Show, so a token in a git URL
+// never reaches the page or the log.
 type Step struct {
 	Cmd  *exec.Cmd
 	Run  func(ctx context.Context, j *Job) int
@@ -49,6 +51,9 @@ type Step struct {
 
 // line is how a step appears in the action log.
 func (s Step) line() string {
+	if s.Show != "" {
+		return s.Show
+	}
 	if s.Cmd != nil {
 		return Quote(append([]string{"docker"}, s.Cmd.Args[1:]...))
 	}
@@ -235,6 +240,17 @@ func (js *Jobs) run(j *Job, spec JobSpec) {
 	if spec.Done != nil {
 		spec.Done(j)
 	}
+}
+
+// RunCmd runs one command inside a Run step, with the same output
+// handling as a Cmd step. show is how the command appears in the output.
+func RunCmd(j *Job, c *exec.Cmd, show string) int {
+	j.Line("$ " + show)
+	exit := runStep(j, c)
+	if exit != 0 {
+		j.Linef("fleetling: exit code %d", exit)
+	}
+	return exit
 }
 
 // runStep runs one command with stdout and stderr merged into one pipe, so

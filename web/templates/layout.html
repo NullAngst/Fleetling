@@ -24,6 +24,8 @@
     <li><a href="/images" {{if eq .Active "images"}}aria-current="page"{{end}}>{{template "i-images"}}<span>Images</span></a></li>
     <li><a href="/networks" {{if eq .Active "networks"}}aria-current="page"{{end}}>{{template "i-networks"}}<span>Networks</span></a></li>
     <li><a href="/volumes" {{if eq .Active "volumes"}}aria-current="page"{{end}}>{{template "i-volumes"}}<span>Volumes</span></a></li>
+    <li><a href="/builds" {{if eq .Active "builds"}}aria-current="page"{{end}}>{{template "i-build"}}<span>Builds</span></a></li>
+    <li><a href="/convert" {{if eq .Active "convert"}}aria-current="page"{{end}}>{{template "i-convert"}}<span>Converter</span></a></li>
     <li class="nav-gap"><a href="/import" {{if eq .Active "import"}}aria-current="page"{{end}}>{{template "i-import"}}<span>Import</span></a></li>
     <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>{{template "i-log"}}<span>Action log</span></a></li>
     <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>{{template "i-settings"}}<span>Settings</span></a></li>

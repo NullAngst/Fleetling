@@ -1,0 +1,14 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>Last update</h1>
+    <p class="subtitle mono">{{$d.Path}}</p>
+  </div>
+</header>
+{{if $d.Missing}}<p class="muted">No update has run yet. The Update and Restart buttons on Fleetling's own stack write this log.</p>
+{{else}}
+{{if $d.Failed}}<div class="msg msg-error">The last run did not finish cleanly. The end of the log says whether it rolled back.</div>{{end}}
+<pre class="code mono log-file">{{$d.Log}}</pre>
+{{end}}
+{{end}}

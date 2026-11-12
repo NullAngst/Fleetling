@@ -50,7 +50,7 @@ func dotClass(st compose.Stack) string {
 	return string(st.Kind)
 }
 
-// stacksPage is the home page. Read-only in phase 1: it scans the root,
+// stacksPage is the home page. It scans the root,
 // asks each engine what Compose projects exist, and lines the two up.
 func (s *Server) stacksPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -77,10 +77,14 @@ func (s *Server) stacksPage(w http.ResponseWriter, r *http.Request) {
 	for _, f := range folders {
 		byDir[f.Dir] = f
 	}
+	last := s.lastUpdates(ctx)
 	for i := range d.Stacks {
 		if f, ok := byDir[d.Stacks[i].Dir]; ok && f.Meta != nil {
 			if rs, err := s.reviewFor(ctx, f); err == nil {
 				d.Stacks[i].Review = rs.State
+			}
+			if sc, ok := last[f.Name]; ok {
+				d.Stacks[i].UpdateResult, d.Stacks[i].UpdateMsg = sc.LastResult, sc.LastMsg
 			}
 		}
 	}

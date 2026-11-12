@@ -633,6 +633,9 @@ func (s *Server) deleteStep(st store.Settings, target, slot string, sc refScope,
 					if err := s.store.DeleteBaseline(context.Background(), f.Name); err != nil {
 						j.Linef("fleetling: could not forget the approved files of %s: %v", f.Name, err)
 					}
+					if err := s.store.DeleteSchedule(context.Background(), f.Name); err != nil {
+						j.Linef("fleetling: could not forget the auto-update schedule of %s: %v", f.Name, err)
+					}
 				}
 			}
 			if failed > 0 {
@@ -829,6 +832,9 @@ func (s *Server) jobPage(w http.ResponseWriter, r *http.Request) {
 	active := "stacks"
 	if strings.HasPrefix(j.Target, "container/") {
 		active = "containers"
+	}
+	if strings.HasPrefix(j.Target, "build/") {
+		active = "builds"
 	}
 	s.render(w, http.StatusOK, "job", s.page(r, title, active, d))
 }

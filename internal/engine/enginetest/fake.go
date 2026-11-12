@@ -37,6 +37,7 @@ type Container struct {
 	ImageID  string
 	Volumes  []string // named volumes mounted
 	Networks []string // networks attached
+	Health   string   // reported by inspect when set: healthy, unhealthy, starting
 }
 
 // Network is a fake network.
@@ -52,9 +53,10 @@ type Network struct {
 
 // Image is a fake image.
 type Image struct {
-	ID   string
-	Tags []string
-	Size int64
+	ID      string
+	Tags    []string
+	Size    int64
+	Digests []string // RepoDigests, name@sha256:...
 }
 
 // Volume is a fake volume.
@@ -261,7 +263,7 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 		e.mu.Lock()
 		var out []map[string]any
 		for _, im := range e.Images {
-			out = append(out, map[string]any{"Id": im.ID, "RepoTags": im.Tags, "Size": im.Size, "Created": time.Now().Add(-48 * time.Hour).Unix(), "Containers": -1})
+			out = append(out, map[string]any{"Id": im.ID, "RepoTags": im.Tags, "RepoDigests": im.Digests, "Size": im.Size, "Created": time.Now().Add(-48 * time.Hour).Unix(), "Containers": -1})
 		}
 		e.mu.Unlock()
 		j(out)
@@ -297,7 +299,17 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 		ref := strings.Join(parts[1:len(parts)-1], "/")
 		e.mu.Lock()
 		env, ok := e.ImageEnv[ref]
+		var img *Image
+		for _, im := range e.Images {
+			if im.ID == ref || slices.Contains(im.Tags, ref) {
+				img = im
+			}
+		}
 		e.mu.Unlock()
+		if img != nil {
+			j(map[string]any{"Id": img.ID, "RepoTags": img.Tags, "RepoDigests": img.Digests, "Config": map[string]any{"Env": env}})
+			return
+		}
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
 			j(map[string]string{"message": "No such image: " + ref})
@@ -333,6 +345,11 @@ func (e *Engine) container(w http.ResponseWriter, r *http.Request, c *Container,
 	}
 	switch what {
 	case "json":
+		// Tests change containers while code polls them, so read under the lock.
+		e.mu.Lock()
+		cp := *c
+		e.mu.Unlock()
+		c := &cp
 		status := "exited"
 		if c.Running {
 			status = "running"
@@ -341,8 +358,16 @@ func (e *Engine) container(w http.ResponseWriter, r *http.Request, c *Container,
 		for _, m := range c.Mounts {
 			mounts = append(mounts, map[string]any{"Type": "bind", "Source": m.Source, "Destination": m.Destination, "RW": true})
 		}
-		j(map[string]any{"Id": c.ID, "Name": "/" + c.Name, "Image": "sha256:abc",
-			"State":  map[string]any{"Status": status, "Running": c.Running, "StartedAt": "2026-10-04T12:00:00Z"},
+		image := "sha256:abc"
+		if c.ImageID != "" {
+			image = c.ImageID
+		}
+		state := map[string]any{"Status": status, "Running": c.Running, "StartedAt": "2026-10-04T12:00:00Z"}
+		if c.Health != "" {
+			state["Health"] = map[string]any{"Status": c.Health}
+		}
+		j(map[string]any{"Id": c.ID, "Name": "/" + c.Name, "Image": image,
+			"State":  state,
 			"Config": map[string]any{"Image": c.Image, "Tty": c.Tty, "Labels": c.Labels, "Env": c.Env}, "Mounts": mounts})
 	case "start", "stop", "restart", "kill":
 		e.record(r, c, what)
@@ -488,5 +513,15 @@ func (e *Engine) execCall(w http.ResponseWriter, r *http.Request, id, what strin
 			}
 			buf.Flush()
 		}
+	}
+}
+
+// Update changes a container under the fake's lock, for tests that need a
+// container to change state while the code under test polls it.
+func (e *Engine) Update(id string, fn func(*Container)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if c := e.containers[id]; c != nil {
+		fn(c)
 	}
 }

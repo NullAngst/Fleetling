@@ -131,12 +131,12 @@ func TestWriteFileAtomicKeepsBytes(t *testing.T) {
 }
 
 func TestValidFolderName(t *testing.T) {
-	for _, ok := range []string{"gitea", "npmplus_data", "My Stack"} {
+	for _, ok := range []string{"gitea", "npmplus_data", "My Stack", "café"} {
 		if !ValidFolderName(ok) {
 			t.Errorf("%q rejected", ok)
 		}
 	}
-	for _, bad := range []string{"", ".", "..", ".hidden", "a/b", `a\b`, "a\x00b"} {
+	for _, bad := range []string{"", ".", "..", ".hidden", "a/b", `a\b`, "a\x00b", "a#b", "a?b", "tab\there", "new\nline", "del\x7f", "c1\u0085"} {
 		if ValidFolderName(bad) {
 			t.Errorf("%q accepted", bad)
 		}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -36,6 +37,10 @@ type fakeEngine struct {
 	mounts     []compose.Mount
 	labels     map[string]string
 	err        error
+	imageID    string          // what Inspect reports as the container's image
+	exists     map[string]bool // container names Exists reports
+	project    []engine.ProjectContainer
+	images     map[string]engine.ImageInfo
 }
 
 func (f *fakeEngine) Identify(context.Context) (engine.Info, error) { return f.info, f.err }
@@ -59,6 +64,29 @@ func (f *fakeEngine) ContainerLabels(context.Context, string) (map[string]string
 func (f *fakeEngine) Containers(context.Context) ([]engine.ContainerRow, error) { return nil, f.err }
 func (f *fakeEngine) Volumes(context.Context) ([]engine.VolumeRow, error)       { return nil, f.err }
 func (f *fakeEngine) Close() error                                              { return nil }
+func (f *fakeEngine) Inspect(_ context.Context, id string) (engine.Detail, error) {
+	return engine.Detail{ContainerRow: engine.ContainerRow{ID: id}, ImageID: f.imageID}, f.err
+}
+func (f *fakeEngine) Images(context.Context) ([]engine.ImageRow, error)     { return nil, f.err }
+func (f *fakeEngine) Networks(context.Context) ([]engine.NetworkRow, error) { return nil, f.err }
+func (f *fakeEngine) Exists(_ context.Context, name string) (bool, error) {
+	return f.exists[name], f.err
+}
+func (f *fakeEngine) ProjectContainers(_ context.Context, project string) ([]engine.ProjectContainer, error) {
+	var out []engine.ProjectContainer
+	for _, c := range f.project {
+		if c.Name == "" || strings.HasPrefix(c.Name, project+"-") {
+			out = append(out, c)
+		}
+	}
+	return out, f.err
+}
+func (f *fakeEngine) ImageInfo(_ context.Context, ref string) (engine.ImageInfo, error) {
+	if i, ok := f.images[ref]; ok {
+		return i, nil
+	}
+	return engine.ImageInfo{}, errors.New("No such image: " + ref)
+}
 
 type harness struct {
 	t         *testing.T
@@ -83,7 +111,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { st.Close() })
 	s, err := New(ctx, Config{DefaultRoot: root, DataDir: filepath.Join(dir, "data"), Version: "test",
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, st)
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), NoScheduler: true}, st)
 	if err != nil {
 		t.Fatal(err)
 	}

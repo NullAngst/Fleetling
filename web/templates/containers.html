@@ -3,7 +3,7 @@
 <header class="page-head">
   <h1>Containers</h1>
   <div class="actions">
-    {{if gt (len $d.Slots) 1}}<nav class="switch">{{range $d.Slots}}<a href="/containers?engine={{.}}" {{if eq . $d.Slot}}aria-current="page"{{end}}>{{.}}</a>{{end}}</nav>{{end}}
+    {{template "switch" (dict "Slots" $d.Slots "Slot" $d.Slot "Base" "/containers")}}
     <select data-col-filter="#containers" data-col="1" aria-label="Stack">
       <option value="">All stacks</option>
       {{range $d.Projects}}<option>{{.}}</option>{{end}}

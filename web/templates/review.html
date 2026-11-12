@@ -6,13 +6,13 @@
 <p class="notice-line">If you didn't make these changes, don't approve them. A container that mounts its own stack folder can rewrite these files; check for added <span class="mono">privileged</span>, host mounts, <span class="mono">network_mode: host</span>, <span class="mono">cap_add</span>, new images, or a changed <span class="mono">project</span> in .fleetling.toml. Fix the files on the host, then come back.</p>
 {{range $d.Files}}
 <h2 class="mono">{{.Path}} <span class="muted">{{.Kind}}</span></h2>
-{{if .Diffable}}{{template "diff" .Rows}}{{else}}<p class="muted">Too large to show; the hash changed.</p>{{end}}
+{{if .Diffable}}{{template "diff" .Rows}}{{else}}<p class="muted">Content not kept (a build context file, or over 1 MB); the hash changed.</p>{{end}}
 {{end}}
 {{else if eq $d.State "unrecorded"}}
 <p>Fleetling has no approved record of this stack's files yet, so it won't run anything here until you've looked at them once. These are the files a deploy would use:</p>
 {{range $d.Current.Files}}{{if .Exists}}
 <h2 class="mono">{{.Path}}</h2>
-{{if .TooLarge}}<p class="muted">Too large to show.</p>{{else}}<pre class="code mono">{{.Content}}</pre>{{end}}
+{{if .TooLarge}}<p class="muted">Content not kept (a build context file, or over 1 MB); its hash is recorded.</p>{{else}}<pre class="code mono">{{.Content}}</pre>{{end}}
 {{end}}{{end}}
 {{else}}
 <p>Nothing to review. The files match what was last saved or approved.</p>

@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/NullAngst/Fleetling/internal/compose"
+	"github.com/NullAngst/Fleetling/internal/detect"
 	"github.com/NullAngst/Fleetling/internal/engine"
 	"github.com/NullAngst/Fleetling/internal/store"
+	"github.com/NullAngst/Fleetling/internal/updater"
 )
 
 type stackFormData struct {
@@ -27,6 +29,7 @@ type stackFormData struct {
 	Env           string
 	Deploy        bool
 	ValidationErr string
+	EngineWhy     string // why the engine field was pre-filled, from internal/detect
 
 	// Edit only.
 	Folder      compose.Folder
@@ -124,6 +127,7 @@ func (s *Server) newStackSubmit(w http.ResponseWriter, r *http.Request) {
 	if d.FolderName == "" {
 		d.FolderName = d.Project
 	}
+	d.EngineWhy = engineHint(detect.Detect(d.Compose), d.Engines)
 	fail := func(msg string) {
 		p := s.page(r, "New stack", "stacks", d)
 		p.Editor = true
@@ -347,12 +351,8 @@ func (s *Server) editSubmit(w http.ResponseWriter, r *http.Request) {
 		render(status, "")
 		return
 	}
-	if step == "save_deploy" {
-		if si, ok := s.self(ctx, st); ok && si.is(f) {
-			render(http.StatusConflict, "this is Fleetling's own stack. Save it, then redeploy it from the host until self-management lands")
-			return
-		}
-	}
+	si, isSelf := s.self(ctx, st)
+	isSelf = isSelf && si.is(f)
 
 	if rs, err := s.reviewFor(ctx, f); err != nil || rs.State != reviewOK {
 		render(http.StatusConflict, "files in this stack changed outside Fleetling. Review them on the stack page before saving")
@@ -365,6 +365,15 @@ func (s *Server) editSubmit(w http.ResponseWriter, r *http.Request) {
 	s.logFileAction(ctx, f.Name, engineOf(f), "fleetling: save "+filepath.Join(f.Dir, f.ComposeFile)+" and .env", err)
 	if err != nil {
 		render(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if step == "save_deploy" && f.Meta != nil && isSelf {
+		// Fleetling's own stack redeploys through the update helper.
+		if err := s.runSelfHelper(ctx, st, f, si, updater.ModeUpdate); err != nil {
+			render(http.StatusConflict, "saved, but the update helper did not start: "+err.Error())
+			return
+		}
+		http.Redirect(w, r, "/self/updating?mode=update", http.StatusSeeOther)
 		return
 	}
 	if step == "save_deploy" && f.Meta != nil {

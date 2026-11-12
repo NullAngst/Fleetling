@@ -1,0 +1,46 @@
+{
+  "name": "plex",
+  "services": {
+    "plex": {
+      "restart": "unless-stopped",
+      "container_name": "plex",
+      "command": null,
+      "devices": [
+        {
+          "source": "/dev/dri",
+          "target": "/dev/dri",
+          "permissions": "rwm"
+        }
+      ],
+      "entrypoint": null,
+      "environment": {
+        "PGID": "1000",
+        "PUID": "1000",
+        "TZ": "America/New_York",
+        "VERSION": "docker"
+      },
+      "image": "lscr.io/linuxserver/plex:latest",
+      "network_mode": "host",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/opt/plex/config",
+          "target": "/config",
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/mnt/media/tv",
+          "target": "/tv",
+          "bind": {}
+        },
+        {
+          "type": "bind",
+          "source": "/mnt/media/movies",
+          "target": "/movies",
+          "bind": {}
+        }
+      ]
+    }
+  }
+}

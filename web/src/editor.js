@@ -103,7 +103,12 @@ const nonce = document.querySelector('meta[name="csp-nonce"]')?.content;
 for (const ta of document.querySelectorAll("textarea[data-editor]")) {
   const extensions = [basicSetup, keymap.of([indentWithTab]), theme, EditorView.lineWrapping,
     EditorState.tabSize.of(2),
-    EditorView.updateListener.of((u) => { if (u.docChanged) ta.value = u.state.doc.toString(); })];
+    EditorView.updateListener.of((u) => {
+      if (!u.docChanged) return;
+      ta.value = u.state.doc.toString();
+      // Let other scripts (the engine suggestion) see the change.
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+    })];
   if (nonce) extensions.push(EditorView.cspNonce.of(nonce));
   if (ta.dataset.editor === "yaml") extensions.push(yaml(), syntaxHighlighting(highlight));
   if (ta.dataset.editor === "env") extensions.push(revealed, envMask);

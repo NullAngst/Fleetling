@@ -41,6 +41,9 @@ func findAction(key string) (stackAction, bool) {
 			return a, true
 		}
 	}
+	if key == redeploy.Key {
+		return redeploy, true
+	}
 	return stackAction{}, false
 }
 
@@ -211,9 +214,10 @@ func (s *Server) logFileAction(ctx context.Context, target, engineSlot, what str
 
 // selfInfo identifies Fleetling's own Compose project.
 type selfInfo struct {
-	Project    string
-	Slot       string
-	WorkingDir string
+	Project     string
+	Slot        string
+	WorkingDir  string
+	ContainerID string // the ID or name that found it
 }
 
 // self finds Fleetling's own container and reads its Compose labels.
@@ -234,7 +238,7 @@ func (s *Server) self(ctx context.Context, st store.Settings) (selfInfo, bool) {
 			cancel()
 			if err == nil && labels[engine.LabelProject] != "" {
 				e.Close()
-				return selfInfo{Project: labels[engine.LabelProject], Slot: ep.Slot, WorkingDir: labels[engine.LabelWorkingDir]}, true
+				return selfInfo{Project: labels[engine.LabelProject], Slot: ep.Slot, WorkingDir: labels[engine.LabelWorkingDir], ContainerID: id}, true
 			}
 		}
 		e.Close()
@@ -264,7 +268,7 @@ func (s *Server) existingStackFor(ctx context.Context, st store.Settings, projec
 	containers, _ := s.gather(ctx, st)
 	for _, c := range containers {
 		if c.Project == project && c.Engine == slot {
-			return "a project with that name is already running on " + slot + " (Adopt arrives with the Portainer importer)"
+			return "a project with that name is already running on " + slot + "; the Portainer importer can take it over"
 		}
 	}
 	return ""

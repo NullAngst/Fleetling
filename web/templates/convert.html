@@ -1,0 +1,118 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>Converter</h1>
+    <p class="subtitle">Turn a compose file into Podman Quadlet units or Kubernetes manifests, and see what won't survive the trip.</p>
+  </div>
+</header>
+<p class="notice-line">A Podman stack in Fleetling needs no conversion: Fleetling runs the compose file on Podman as it is. Quadlet output is for running a stack under systemd without Fleetling. Nothing here is installed or applied.</p>
+
+<form method="post" action="/convert" class="form wide" id="convert-form">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <div class="field-row">
+    <label>Stack
+      <select name="stack" data-convert-source>
+        <option value="">Paste a compose file instead</option>
+        {{range $d.Stacks}}<option value="{{.}}" {{if eq . $d.Stack}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </label>
+    <label>Project name <input name="project" class="mono" value="{{$d.Project}}" pattern="[a-z0-9][a-z0-9_\-]*"><small>For pasted files. Paths resolve as if it lived in its own folder under the root.</small></label>
+  </div>
+  <label data-convert-paste {{if $d.Stack}}hidden{{end}}>compose.yaml
+    <textarea name="compose" rows="16" class="mono" spellcheck="false">{{if not $d.Stack}}{{$d.Text}}{{end}}</textarea>
+  </label>
+  <fieldset>
+    <legend>Kubernetes options (kompose)</legend>
+    <div class="field-row">
+      <label>Volumes <select name="volumes">{{range $d.Volumes}}<option {{if eq . $d.Opts.Volumes}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Service type <select name="service_type">{{range $d.ServiceTypes}}<option {{if eq . $d.Opts.ServiceType}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <label>Controller <select name="controller">{{range $d.Controllers}}<option {{if eq . $d.Opts.Controller}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+    </div>
+    <small>The service type goes in as kompose's <span class="mono">kompose.service.type</span> label on a temporary copy, never on your file.</small>
+  </fieldset>
+  <button type="submit" name="do" value="convert" class="primary">{{template "i-convert"}}Convert</button>
+</form>
+
+{{if $d.Done}}
+{{if $d.NormErr}}<div class="msg msg-error"><span class="mono">docker compose config</span> failed: <pre class="mono">{{$d.NormErr}}</pre></div>{{else}}
+<h2>Warnings</h2>
+{{if $d.Warnings}}
+<div class="table-wrap">
+<table class="list lint">
+  <thead><tr><th>Line</th><th>Service</th><th>Setting</th><th>Quadlet</th><th>Kubernetes</th></tr></thead>
+  <tbody>
+  {{range $d.Warnings}}
+    <tr>
+      <td data-label="Line" class="mono num">{{if .Line}}{{.Line}}{{else}}<span class="muted" title="Came from an include or extends file">other file</span>{{end}}</td>
+      <td data-label="Service" class="mono">{{.Service}}</td>
+      <td data-label="Setting" class="mono">{{.What}}</td>
+      <td data-label="Quadlet">{{.Quadlet}}</td>
+      <td data-label="Kubernetes">{{.Kubernetes}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{else}}<p class="muted">Nothing in this file is known to change meaning in either conversion.</p>{{end}}
+
+<nav class="tabs" data-tabs>
+  <a href="#t-norm" aria-current="page">Normalized</a>
+  <a href="#t-quadlet">Podman Quadlet</a>
+  <a href="#t-k8s">Kubernetes</a>
+</nav>
+
+<section id="t-norm" data-tab-panel>
+  <p class="muted">What <span class="mono">docker compose config</span> makes of the file: variables filled in, short syntax expanded, paths absolute. Both converters read this.</p>
+  <div class="pane"><div class="pane-head"><span class="mono">compose.yaml</span><button type="button" class="small-btn" data-copy>Copy</button></div><pre class="code mono">{{$d.Normalized}}</pre></div>
+</section>
+
+<section id="t-quadlet" data-tab-panel>
+  {{if $d.QuadletErr}}<div class="msg msg-error">podlet: <span class="mono">{{$d.QuadletErr}}</span></div>{{else}}
+  {{template "convert-actions" (dict "D" $d "CSRF" $.CSRF "Format" "quadlet" "Folder" "quadlet")}}
+  {{range $d.Quadlet}}<div class="pane"><div class="pane-head"><span class="mono">{{.Name}}</span><button type="button" class="small-btn" data-copy>Copy</button></div><pre class="code mono">{{.Content}}</pre></div>{{end}}
+  <h3>Install on a host, as root</h3>
+  <pre class="code mono">{{range $d.Install}}{{.}}
+{{end}}</pre>
+  <p class="muted">Copy the files to the host first. Fleetling never runs these.</p>
+  {{end}}
+</section>
+
+<section id="t-k8s" data-tab-panel>
+  {{if $d.K8sErr}}<div class="msg msg-error">kompose: <span class="mono">{{$d.K8sErr}}</span></div>{{else}}
+  {{template "convert-actions" (dict "D" $d "CSRF" $.CSRF "Format" "k8s" "Folder" "k8s")}}
+  {{if $d.K8sNotes}}<details><summary>kompose notes</summary><pre class="code mono">{{$d.K8sNotes}}</pre></details>{{end}}
+  {{range $d.K8s}}<div class="pane"><div class="pane-head"><span class="mono">{{.Name}}</span><button type="button" class="small-btn" data-copy>Copy</button></div><pre class="code mono">{{.Content}}</pre></div>{{end}}
+  {{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}
+
+{{define "convert-actions"}}{{$d := .D}}
+<div class="toolbar">
+  <form method="post" action="/convert">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{template "convert-hidden" $d}}
+    <input type="hidden" name="format" value="{{.Format}}">
+    <button type="submit" name="do" value="download">{{template "i-import"}}Download all as .tar</button>
+  </form>
+  {{if $d.Stack}}
+  <form method="post" action="/convert">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    {{template "convert-hidden" $d}}
+    <input type="hidden" name="format" value="{{.Format}}">
+    <button type="submit" name="do" value="save" data-command="write these files into {{$d.Stack}}/{{.Folder}}/ (nothing is installed or applied)" data-title="Save next to {{$d.Stack}}?">{{template "i-folder"}}Save next to stack</button>
+  </form>
+  {{end}}
+</div>
+{{end}}
+
+{{define "convert-hidden"}}
+<input type="hidden" name="stack" value="{{.Stack}}">
+<input type="hidden" name="project" value="{{.Project}}">
+<input type="hidden" name="volumes" value="{{.Opts.Volumes}}">
+<input type="hidden" name="service_type" value="{{.Opts.ServiceType}}">
+<input type="hidden" name="controller" value="{{.Opts.Controller}}">
+{{if not .Stack}}<textarea name="compose" hidden>{{.Text}}</textarea>{{end}}
+{{end}}

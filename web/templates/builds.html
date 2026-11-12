@@ -1,0 +1,89 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>Builds</h1>
+    <p class="subtitle">Build an image from a folder under <span class="mono">{{$d.Root}}</span> or a git URL. Stacks with <span class="mono">build:</span> have their own Build button.</p>
+  </div>
+</header>
+
+{{if $d.Recipes}}
+<h2>Recipes</h2>
+<div class="table-wrap">
+<table class="list" id="recipes">
+  <thead><tr><th>Name</th><th>Command</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Recipes}}
+    <tr>
+      <td data-label="Name"><a class="name" href="/builds?recipe={{.Name}}">{{.Name}}</a></td>
+      <td data-label="Command" class="mono path">{{if .Invalid}}<span class="warn">{{.Shown}}</span>{{else}}{{.Shown}}{{end}}</td>
+      <td data-label="" class="nowrap">
+        <div class="seg">
+          {{if not .Invalid}}<form method="post" action="/builds/recipes/{{.Name}}/run"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" data-command="{{.Shown}}" data-title="Build from recipe {{.Name}}?">{{template "i-build"}}Run</button></form>{{end}}
+          <form method="post" action="/builds/recipes/{{.Name}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" data-command="delete the saved recipe {{.Name}} (no images are removed)" data-title="Delete recipe {{.Name}}?" data-danger>{{template "i-remove"}}Delete</button></form>
+        </div>
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+{{end}}
+
+<h2>{{if $d.Name}}Recipe {{$d.Name}}{{else}}New build{{end}}</h2>
+<form method="post" action="/builds" class="form wide">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <div class="field-row">
+    <label>Context
+      <input name="context" class="mono" value="{{$d.Spec.Context}}" list="build-folders" placeholder="myapp/build or https://github.com/owner/repo.git#main" required>
+      <small>A folder under <span class="mono">{{$d.Root}}</span>, or an <span class="mono">https://</span> or <span class="mono">git@</span> URL. A token in an https URL is kept out of the action log.</small>
+    </label>
+    <datalist id="build-folders">{{range $d.Folders}}<option value="{{.}}">{{end}}</datalist>
+    <label>Dockerfile
+      <input name="dockerfile" class="mono" value="{{$d.Spec.Dockerfile}}" placeholder="Dockerfile">
+      <small>Relative to the context.</small>
+    </label>
+  </div>
+  <div class="field-row">
+    <label>Tags
+      <input name="tags" class="mono" value="{{$d.Tags}}" placeholder="myapp:latest" required>
+      <small>One or more, separated by spaces.</small>
+    </label>
+    {{if gt (len $d.Slots) 1}}
+    <label>Engine
+      <select name="slot">{{range $d.Slots}}<option value="{{.}}" {{if eq . $d.Spec.Slot}}selected{{end}}>{{.}}</option>{{end}}</select>
+    </label>
+    {{else}}<input type="hidden" name="slot" value="{{$d.Spec.Slot}}">{{end}}
+  </div>
+  <fieldset>
+    <legend>Build args</legend>
+    {{range $d.Rows}}
+    <div class="field-row kv">
+      <input name="arg_key" class="mono" value="{{index . 0}}" placeholder="NAME" aria-label="Build arg name">
+      <input name="arg_val" class="mono" value="{{index . 1}}" placeholder="value" aria-label="Build arg value">
+    </div>
+    {{end}}
+  </fieldset>
+  <div class="field-row">
+    <label>Target stage <input name="target" class="mono" value="{{$d.Spec.Target}}" placeholder="optional"></label>
+    <label>Platform <input name="platform" class="mono" value="{{$d.Spec.Platform}}" placeholder="linux/amd64"></label>
+  </div>
+  <label class="check"><input type="checkbox" name="pull" value="1" {{if $d.Spec.Pull}}checked{{end}}> Pull newer base images</label>
+  <label class="check"><input type="checkbox" name="no_cache" value="1" {{if $d.Spec.NoCache}}checked{{end}}> No cache</label>
+
+  {{if $d.Command}}
+  <p>This is exactly what Build runs:</p>
+  <p class="mono cmd">{{$d.Command}}</p>
+  <input type="hidden" name="shown" value="{{$d.Command}}">
+  {{end}}
+  <div class="actions">
+    {{if $d.Command}}<button type="submit" name="do" value="run" class="primary">{{template "i-build"}}Build</button>{{end}}
+    <button type="submit" name="do" value="check"{{if not $d.Command}} class="primary"{{end}}>Check command</button>
+  </div>
+  <div class="field-row">
+    <label>Recipe name <input name="name" value="{{$d.Name}}" placeholder="my app"></label>
+    <button type="submit" name="do" value="save">Save recipe</button>
+  </div>
+  <p class="muted">Recipes are stored in Fleetling's database (mode 600), git URLs included as typed.</p>
+</form>
+{{end}}

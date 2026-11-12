@@ -1,0 +1,5 @@
+{{define "ifaces-select"}}<select name="parent">
+  <option value=""></option>
+  {{$p := .Parent}}{{range .Ifaces}}<option {{if eq . $p}}selected{{end}}>{{.}}</option>{{end}}
+</select>
+{{if .IfErr}}<small class="warn">Could not list the host's interfaces: {{.IfErr}}</small>{{end}}{{end}}

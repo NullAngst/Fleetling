@@ -119,6 +119,9 @@ type networkFormData struct {
 	IfErr   string
 	Options [][2]string
 	Labels  [][2]string
+	// LazyIfaces: the page loads the interface list with a POST after it
+	// opens, instead of starting a container during the GET.
+	LazyIfaces bool
 }
 
 // hostInterfaces lists the host's network interfaces. A container sees only
@@ -137,6 +140,11 @@ func (s *Server) hostInterfaces(ctx context.Context, st store.Settings, slot str
 		}
 		return filterIfaces(names), nil
 	}
+	// Run the lister on the engine Fleetling itself runs on, where its
+	// image is. Both engines share the host's interfaces.
+	if si, ok := s.self(ctx, st); ok {
+		slot = si.Slot
+	}
 	e, _, err := s.engineFor(ctx, slot)
 	if err != nil {
 		return nil, err
@@ -144,7 +152,10 @@ func (s *Server) hostInterfaces(ctx context.Context, st store.Settings, slot str
 	image := ""
 	for _, id := range s.selfIDs() {
 		if d, err := e.Inspect(ctx, id); err == nil {
-			image = d.Image
+			image = d.ImageID
+			if image == "" {
+				image = d.Image
+			}
 			break
 		}
 	}
@@ -204,19 +215,32 @@ func filterIfaces(names []string) []string {
 }
 
 func (s *Server) networkForm(w http.ResponseWriter, r *http.Request) {
-	st, slots, slot, err := s.slotFromQuery(r)
+	_, slots, slot, err := s.slotFromQuery(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	d := networkFormData{Slots: slots, Slot: slot, Spec: engine.NetworkSpec{Driver: "bridge"}, Options: make([][2]string, 3), Labels: make([][2]string, 2)}
-	if slot != "" {
-		d.Ifaces, err = s.listIfaces(r.Context(), st, slot)
-		if err != nil {
-			d.IfErr = err.Error()
-		}
-	}
+	// The interface list needs a throwaway container, and a GET must not
+	// start anything, so the page loads it with a POST once it is open.
+	d := networkFormData{Slots: slots, Slot: slot, Spec: engine.NetworkSpec{Driver: "bridge"}, Options: make([][2]string, 3), Labels: make([][2]string, 2), LazyIfaces: slot != ""}
 	s.render(w, http.StatusOK, "network_new", s.page(r, "New network", "networks", d))
+}
+
+// networkIfaces is the parent interface field, filled in after the form
+// page opens.
+func (s *Server) networkIfaces(w http.ResponseWriter, r *http.Request) {
+	st, _, slot, err := s.slotFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	d := map[string]any{}
+	ifs, err := s.listIfaces(r.Context(), st, slot)
+	d["Ifaces"] = ifs
+	if err != nil {
+		d["IfErr"] = err.Error()
+	}
+	s.render(w, http.StatusOK, "partial_ifaces", d)
 }
 
 // pairs reads key/value rows posted as k_name[] and v_name[].

@@ -88,10 +88,19 @@ func Discover(root string, ignore []string) ([]Folder, error) {
 func ReadFolder(dir string) (Folder, bool) { return readFolder(dir) }
 
 // ValidFolderName reports whether name is usable as a stack folder directly
-// under the root: one path element, not hidden.
+// under the root: one path element, not hidden, nothing that breaks a URL
+// path (# and ?) and no control characters.
 func ValidFolderName(name string) bool {
-	return name != "" && name != "." && name != ".." && !strings.HasPrefix(name, ".") &&
-		!strings.ContainsAny(name, "/\\\x00") && len(name) <= 255
+	if name == "" || name == "." || name == ".." || strings.HasPrefix(name, ".") ||
+		strings.ContainsAny(name, "/\\#?") || len(name) > 255 {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f || (r >= 0x80 && r < 0xa0) {
+			return false
+		}
+	}
+	return true
 }
 
 func readFolder(dir string) (Folder, bool) {

@@ -45,6 +45,21 @@ var migrations = []string{
 		source   TEXT    NOT NULL, -- what recorded it: create, save, approve, ...
 		snapshot TEXT    NOT NULL  -- JSON of compose.Snapshot
 	)`,
+	// Saved standalone builds, rerun with one click from the Builds page.
+	`CREATE TABLE build_recipes (
+		name    TEXT PRIMARY KEY,
+		spec    TEXT    NOT NULL, -- JSON of the build form
+		updated INTEGER NOT NULL  -- unix milliseconds
+	)`,
+	// Auto-update per stack: the schedule, and how the last run went.
+	`CREATE TABLE update_schedules (
+		folder   TEXT PRIMARY KEY,
+		cron     TEXT    NOT NULL,          -- 5-field cron expression, in the container's time zone
+		enabled  INTEGER NOT NULL DEFAULT 1,
+		last_run    INTEGER,                    -- unix milliseconds, NULL before the first run
+		last_result TEXT    NOT NULL DEFAULT '', -- ok, failed or skipped; '' before the first run
+		last_msg    TEXT    NOT NULL DEFAULT ''  -- why it failed or was skipped
+	)`,
 }
 
 // Open opens (or creates) the database at path and brings the schema up to

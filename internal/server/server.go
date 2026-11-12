@@ -19,7 +19,9 @@ import (
 
 	"github.com/NullAngst/Fleetling/internal/auth"
 	"github.com/NullAngst/Fleetling/internal/compose"
+	"github.com/NullAngst/Fleetling/internal/convert"
 	"github.com/NullAngst/Fleetling/internal/engine"
+	"github.com/NullAngst/Fleetling/internal/registry"
 	"github.com/NullAngst/Fleetling/internal/store"
 	"github.com/NullAngst/Fleetling/web"
 )
@@ -31,7 +33,9 @@ type Config struct {
 	Version        string
 	TrustedProxies []netip.Prefix
 	Logger         *slog.Logger
-	DockerBin      string // docker CLI to run, "docker" from PATH by default
+	DockerBin      string   // docker CLI to run, "docker" from PATH by default
+	NoScheduler    bool     // tests drive runSchedules by hand
+	Origins        []string // FLEETLING_ORIGINS: extra exact origins a reverse proxy serves Fleetling under
 }
 
 // Engine is the part of engine.Client the server uses. Tests swap in a fake.
@@ -62,6 +66,9 @@ type Engine interface {
 	Volumes(ctx context.Context) ([]engine.VolumeRow, error)
 	RemoveVolume(ctx context.Context, name string) error
 	PruneVolumes(ctx context.Context, all bool) (int, uint64, error)
+	ProjectContainers(ctx context.Context, project string) ([]engine.ProjectContainer, error)
+	ImageInfo(ctx context.Context, ref string) (engine.ImageInfo, error)
+	Exists(ctx context.Context, nameOrID string) (bool, error)
 	Close() error
 }
 
@@ -82,11 +89,16 @@ type Server struct {
 	inContainer func() bool
 	selfIDs     func() []string
 	listIfaces  func(ctx context.Context, st store.Settings, slot string) ([]string, error)
+	checkUnit   func(ctx context.Context, st store.Settings, unit string) (bool, error) // nil runs the real check
 	now         func() time.Time
 	mountInfo   string                       // mount table for the deletion rules, "" for the real one
 	devOf       func(string) (uint64, error) // device IDs for the deletion rules, nil for the real ones
 
-	imp importState
+	imp   importState
+	tools convert.Tools // docker, podlet and kompose for the converter
+	reg   *registry.Checker
+
+	boot string // random per process; /healthz sends it so the update page sees the new process
 
 	mu         sync.RWMutex
 	secret     []byte
@@ -116,8 +128,11 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 		selfIDs:     engine.SelfIDCandidates,
 		now:         time.Now,
 		runner:      compose.Runner{Docker: cfg.DockerBin},
+		tools:       convert.Tools{Docker: cfg.DockerBin},
+		reg:         registry.NewChecker(),
 		jobs:        compose.NewJobs(ctx),
 		base:        ctx,
+		boot:        hex.EncodeToString(randomBytes(8)),
 	}
 
 	secretHex, ok, err := st.Get(ctx, store.KeySessionSecret)
@@ -142,6 +157,10 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 	s.listIfaces = s.hostInterfaces
 	s.handler = s.routes()
 	go s.pruneLoop()
+	if !cfg.NoScheduler {
+		s.reconcileSelfUpdate(ctx)
+		go s.scheduleLoop()
+	}
 	return s, nil
 }
 
@@ -182,6 +201,11 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler(static)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Cache-Control", "no-store")
+		// A random ID per process, not the version: the self-update page
+		// waits for a different process to answer, which also covers a
+		// rollback to the same version.
+		w.Header().Set("X-Fleetling-Boot", s.boot)
 		fmt.Fprintln(w, "ok")
 	})
 
@@ -194,7 +218,10 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.requireAuth(s.stacksPage))
 	mux.HandleFunc("GET /stacks/new", s.requireAuth(s.newStackForm))
 	mux.HandleFunc("POST /stacks/new", s.requireAuth(s.newStackSubmit))
+	mux.HandleFunc("POST /stacks/detect", s.requireAuth(s.stackDetect))
 	mux.HandleFunc("GET /stacks/{folder}", s.requireAuth(s.stackPage))
+	mux.HandleFunc("GET /stacks/{folder}/engine", s.requireAuth(s.engineMovePage))
+	mux.HandleFunc("POST /stacks/{folder}/engine", s.requireAuth(s.engineMove))
 	mux.HandleFunc("GET /stacks/{folder}/edit", s.requireAuth(s.editForm))
 	mux.HandleFunc("POST /stacks/{folder}/edit", s.requireAuth(s.editSubmit))
 	mux.HandleFunc("POST /stacks/{folder}/manage", s.requireAuth(s.manageStack))
@@ -203,6 +230,17 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /stacks/{folder}/action/{action}", s.requireAuth(s.stackAction))
 	mux.HandleFunc("GET /stacks/{folder}/remove", s.requireAuth(s.stackRemovePage))
 	mux.HandleFunc("POST /stacks/{folder}/remove", s.requireAuth(s.stackRemove))
+	mux.HandleFunc("POST /stacks/{folder}/schedule", s.requireAuth(s.scheduleSave))
+	mux.HandleFunc("POST /stacks/{folder}/update-now", s.requireAuth(s.updateNow))
+	mux.HandleFunc("GET /stacks/{folder}/updates/check", s.requireAuth(s.updateCheck))
+	mux.HandleFunc("GET /stacks/{folder}/build", s.requireAuth(s.stackBuildPage))
+	mux.HandleFunc("POST /stacks/{folder}/build", s.requireAuth(s.stackBuild))
+	mux.HandleFunc("GET /convert", s.requireAuth(s.convertPage))
+	mux.HandleFunc("POST /convert", s.requireAuth(s.convertSubmit))
+	mux.HandleFunc("GET /builds", s.requireAuth(s.buildsPage))
+	mux.HandleFunc("POST /builds", s.requireAuth(s.buildsSubmit))
+	mux.HandleFunc("POST /builds/recipes/{name}/run", s.requireAuth(s.recipeRun))
+	mux.HandleFunc("POST /builds/recipes/{name}/delete", s.requireAuth(s.recipeDelete))
 	mux.HandleFunc("GET /jobs/{id}", s.requireAuth(s.jobPage))
 	mux.HandleFunc("GET /jobs/{id}/ws", s.requireAuth(s.jobSocket))
 	mux.HandleFunc("GET /actions", s.requireAuth(s.actionLog))
@@ -217,6 +255,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /networks", s.requireAuth(s.networksPage))
 	mux.HandleFunc("GET /networks/new", s.requireAuth(s.networkForm))
 	mux.HandleFunc("POST /networks/new", s.requireAuth(s.networkCreate))
+	mux.HandleFunc("POST /networks/ifaces", s.requireAuth(s.networkIfaces))
 	mux.HandleFunc("POST /networks/{slot}/{id}/remove", s.requireAuth(s.networkRemove))
 	mux.HandleFunc("POST /networks/{slot}/{id}/connect", s.requireAuth(s.networkConnect))
 	mux.HandleFunc("POST /networks/{slot}/{id}/disconnect", s.requireAuth(s.networkDisconnect))
@@ -235,6 +274,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /containers/{slot}/{id}/remove", s.requireAuth(s.containerRemove))
 	mux.HandleFunc("GET /containers/{slot}/{id}/logs/ws", s.requireAuth(s.containerLogsSocket))
 	mux.HandleFunc("GET /containers/{slot}/{id}/shell/ws", s.requireAuth(s.shellSocket))
+	mux.HandleFunc("GET /self/updating", s.requireAuth(s.selfUpdatingPage))
+	mux.HandleFunc("GET /self/last-update", s.requireAuth(s.lastUpdatePage))
+	mux.HandleFunc("GET /self/log", s.requireAuth(s.lastUpdateLog))
 	mux.HandleFunc("GET /settings", s.requireAuth(s.settingsPage))
 	mux.HandleFunc("POST /settings", s.requireAuth(s.settingsSave))
 	mux.HandleFunc("POST /settings/test", s.requireAuth(s.engineTest))
@@ -244,7 +286,12 @@ func (s *Server) routes() http.Handler {
 	// Outermost first: headers, cross-origin refusal, then the setup gate.
 	var h http.Handler = mux
 	h = s.setupGate(h)
-	h = http.NewCrossOriginProtection().Handler(h)
+	cop := http.NewCrossOriginProtection()
+	for _, o := range s.cfg.Origins {
+		// Checked by ParseOrigins already, so this can't fail.
+		_ = cop.AddTrustedOrigin(o)
+	}
+	h = cop.Handler(h)
 	h = securityHeaders(h)
 	return h
 }

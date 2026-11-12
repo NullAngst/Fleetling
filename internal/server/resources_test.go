@@ -36,9 +36,18 @@ func resourceHarness(t *testing.T) (*harness, *browser, *enginetest.Engine) {
 // the same create request `docker network create` does.
 func TestMacvlanFromUI(t *testing.T) {
 	h, b, fe := resourceHarness(t)
+	listed := 0
+	h.s.listIfaces = func(context.Context, store.Settings, string) ([]string, error) {
+		listed++
+		return []string{"enp3s0", "eth0"}, nil
+	}
 	form := b.do("GET", "/networks/new", nil, nil).Body.String()
-	if !strings.Contains(form, "<option >enp3s0</option>") || !strings.Contains(form, `data-show-driver="ipvlan"`) {
-		t.Fatalf("form: %s", form)
+	if !strings.Contains(form, `hx-post="/networks/ifaces?engine=docker"`) || !strings.Contains(form, `data-show-driver="ipvlan"`) || listed != 0 {
+		t.Fatalf("GET listed interfaces (%d) or has no lazy loader: %s", listed, form)
+	}
+	ifs := b.do("POST", "/networks/ifaces?engine=docker", url.Values{"csrf": {csrfRe.FindStringSubmatch(form)[1]}}, nil).Body.String()
+	if !strings.Contains(ifs, "<option>enp3s0</option>") || listed != 1 {
+		t.Fatalf("interface partial: %s", ifs)
 	}
 	w := b.do("POST", "/networks/new", url.Values{
 		"csrf": {csrfRe.FindStringSubmatch(form)[1]}, "engine": {"docker"}, "name": {"lan2"}, "driver": {"macvlan"},

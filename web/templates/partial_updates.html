@@ -1,0 +1,17 @@
+{{if .Problem}}<p class="warn">Could not check: <span class="mono">{{.Problem}}</span></p>{{else}}
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Service</th><th>Image</th><th>Update</th></tr></thead>
+  <tbody>
+  {{range .Rows}}
+    <tr>
+      <td data-label="Service" class="mono">{{.Service}}</td>
+      <td data-label="Image" class="mono path">{{.Image}}</td>
+      <td data-label="Update">{{if eq .Status "available"}}<span class="flag flag-bad">update available</span>{{if .Detail}} <span class="muted small">{{.Detail}}</span>{{end}}{{else if eq .Status "current"}}<span class="state"><span class="dot dot-ok"></span>current</span>{{else if eq .Status "local"}}<span class="muted">{{.Detail}}</span>{{else}}<span class="muted">unknown: {{.Detail}}</span>{{end}}</td>
+    </tr>
+  {{else}}<tr class="empty"><td colspan="3">No services.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted small">Compares each local image's registry digest with what its tag points at now, asked anonymously and cached for {{.TTL}}. Private registries aren't checked.</p>
+{{end}}

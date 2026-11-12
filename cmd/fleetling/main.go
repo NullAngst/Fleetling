@@ -2,6 +2,7 @@
 //
 //	fleetling              serve the web UI (default)
 //	fleetling healthcheck  exit 0 if the local server answers /healthz
+//	fleetling updater      update or restart Fleetling's own stack (run as a helper container)
 //	fleetling version      print the version
 package main
 
@@ -9,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,13 +18,17 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/NullAngst/Fleetling/internal/certs"
+	"github.com/NullAngst/Fleetling/internal/compose"
+	"github.com/NullAngst/Fleetling/internal/engine"
 	"github.com/NullAngst/Fleetling/internal/server"
 	"github.com/NullAngst/Fleetling/internal/store"
+	"github.com/NullAngst/Fleetling/internal/updater"
 )
 
 // version is set at build time with -ldflags "-X main.version=v1.2.3".
@@ -41,9 +47,15 @@ func main() {
 			// is the host's. That is how the networks page fills its parent
 			// interface list.
 			os.Exit(ifaces())
+		case "unitcheck":
+			// Run in a throwaway container with the host's
+			// /etc/systemd/system mounted read-only at /host/systemd.
+			os.Exit(unitcheck(os.Args[2:]))
+		case "updater":
+			os.Exit(runUpdater(os.Args[2:]))
 		case "serve":
 		default:
-			fmt.Fprintf(os.Stderr, "usage: fleetling [serve|healthcheck|ifaces|version]\n")
+			fmt.Fprintf(os.Stderr, "usage: fleetling [serve|healthcheck|ifaces|unitcheck|updater|version]\n")
 			os.Exit(2)
 		}
 	}
@@ -82,6 +94,10 @@ func serve() error {
 	if err != nil {
 		return err
 	}
+	origins, err := server.ParseOrigins(os.Getenv("FLEETLING_ORIGINS"))
+	if err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -97,6 +113,7 @@ func serve() error {
 		DataDir:        dataDir,
 		Version:        version,
 		TrustedProxies: proxies,
+		Origins:        origins,
 		Logger:         log,
 	}, st)
 	if err != nil {
@@ -111,7 +128,7 @@ func serve() error {
 		Handler:           srv,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		// No WriteTimeout: later phases stream logs and shells for as long
+		// No WriteTimeout: logs, shells and job output stream for as long
 		// as the browser keeps them open.
 	}
 	if tlsEnabled() {
@@ -199,6 +216,58 @@ func ifaces() int {
 	}
 	for _, e := range entries {
 		fmt.Println(e.Name())
+	}
+	return 0
+}
+
+// runUpdater is the helper container's entry point. The server starts it
+// with the engine socket and the root mounted at their real paths, and
+// with FLEETLING_ROOT, FLEETLING_DATA and DOCKER_HOST set.
+func runUpdater(args []string) int {
+	fs := flag.NewFlagSet("updater", flag.ContinueOnError)
+	dir := fs.String("dir", "", "the stack folder to update, directly under the root")
+	mode := fs.String("mode", updater.ModeUpdate, "update or restart")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	root := env("FLEETLING_ROOT", "/opt")
+	clean, err := updater.ValidateDir(root, *dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fleetling updater:", err)
+		return 2
+	}
+	data := env("FLEETLING_DATA", filepath.Join(clean, "data"))
+	host := env("DOCKER_HOST", "unix:///var/run/docker.sock")
+	e, err := engine.New(host)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "fleetling updater:", err)
+		return 1
+	}
+	defer e.Close()
+	// The whole run, health wait and rollback included, gets 30 minutes.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+	err = updater.Run(ctx, updater.Config{
+		Root: root, Dir: clean, LogPath: filepath.Join(data, updater.LogFile), Mode: *mode,
+		Host: host, Runner: compose.Runner{}, Engine: e, Out: os.Stderr,
+	})
+	if err != nil {
+		return 1
+	}
+	return 0
+}
+
+var unitName = regexp.MustCompile(`^[A-Za-z0-9@._-]+\.service$`)
+
+func unitcheck(args []string) int {
+	if len(args) != 1 || !unitName.MatchString(args[0]) {
+		fmt.Fprintln(os.Stderr, "usage: fleetling unitcheck <name>.service")
+		return 2
+	}
+	if server.UnitEnabled("/host/systemd", args[0]) {
+		fmt.Println("enabled")
+	} else {
+		fmt.Println("missing")
 	}
 	return 0
 }

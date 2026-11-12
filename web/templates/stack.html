@@ -7,18 +7,29 @@
 </header>
 <dl class="facts">
   <div><dt>Services</dt><dd class="mono">{{$d.Stack.Running}}/{{$d.Stack.Total}}</dd></div>
-  <div><dt>Engine</dt><dd>{{if $d.Stack.Engine}}{{$d.Stack.Engine}}{{else}}<span class="muted">none yet</span>{{end}}</dd></div>
+  <div><dt>Engine</dt><dd>{{if $d.Stack.Engine}}{{$d.Stack.Engine}}{{else}}<span class="muted">none yet</span>{{end}}{{if $d.CanMove}} <a class="small" href="/stacks/{{$d.Folder.Name}}/engine">move</a>{{end}}</dd></div>
   <div><dt>Folder</dt><dd class="mono">{{$d.Folder.Dir}}/{{$d.Folder.ComposeFile}}</dd></div>
 </dl>
 {{range $d.Stack.Warnings}}<div class="warn">{{.}}</div>{{end}}
 {{if eq $d.Review "modified"}}<div class="msg msg-error">{{$d.ReviewCount}} file{{if ne $d.ReviewCount 1}}s{{end}} in this stack changed outside Fleetling. Nothing here runs, and auto-update skips it, until you <a href="/stacks/{{$d.Folder.Name}}/review">review the changes</a>.</div>
 {{else if eq $d.Review "unrecorded"}}<div class="msg msg-notice">Fleetling hasn't recorded this stack's files yet. <a href="/stacks/{{$d.Folder.Name}}/review">Review them once</a> before running anything.</div>{{end}}
+{{if $d.BuildPartial}}<p class="notice-line">The build context is only partly covered by drift review: it holds more than {{/* caps in compose/buildctx.go */}}5000 files or 256 MB, so files past that point aren't recorded. Add a .dockerignore to trim it.</p>{{end}}
 {{if $d.FolderMounted}}<p class="notice-line">{{join $d.FolderMounted ", "}} mounts the stack folder itself, so the container can read .env and edit the compose file. For new stacks, a subfolder like <span class="mono">{{$d.Folder.Dir}}/cfg</span> avoids that.</p>{{end}}
 
 <div class="toolbar">
 {{if $d.Self}}
-  <span class="muted">This is Fleetling's own stack. Compose actions on it arrive with self-management; until then, update it from the host.</span>
-  <a class="button" href="/stacks/{{$d.Folder.Name}}/edit">{{template "i-edit"}}Edit</a>
+  {{if $d.SelfActions}}
+  <div class="seg">
+    {{range $d.SelfActions}}
+    <form method="post" action="/stacks/{{$d.Folder.Name}}/action/{{.Key}}">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <button type="submit" data-command="{{.Command}}" data-title="{{.Label}} Fleetling? A helper container does it while this page reconnects.">{{template "action-icon" .Key}}{{.Label}}</button>
+    </form>
+    {{end}}
+  </div>
+  {{else if $d.SelfErr}}<span class="warn">{{$d.SelfErr}}</span>{{end}}
+  {{if $d.Folder.ComposeFile}}<a class="button" href="/stacks/{{$d.Folder.Name}}/edit">{{template "i-edit"}}Edit</a>{{end}}
+  <a class="button push" href="/self/last-update">{{template "i-log"}}Last update</a>
 {{else if not $d.Folder.Meta}}
   <form method="post" action="/stacks/{{$d.Folder.Name}}/manage">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -38,11 +49,26 @@
     {{if eq $i 2}}<a class="button" href="/stacks/{{$d.Folder.Name}}/remove">{{template "i-remove"}}Remove</a>{{end}}
   </div>
   {{end}}
+  {{if $d.HasBuild}}<a class="button" href="/stacks/{{$d.Folder.Name}}/build">{{template "i-build"}}Build</a>{{end}}
   {{if $d.Folder.ComposeFile}}<a class="button push" href="/stacks/{{$d.Folder.Name}}/edit">{{template "i-edit"}}Edit</a>{{end}}
   {{if $d.TargetErr}}<span class="warn">{{$d.TargetErr}}</span>{{end}}
 {{end}}
 </div>
+{{if $d.Self}}
+<ul class="self-off" aria-label="Turned off for Fleetling's own stack">
+  {{range $d.SelfDisabled}}<li><button type="button" disabled>{{template "action-icon" .Key}}{{.Label}}</button><span class="muted">{{.Reason}}</span></li>{{end}}
+</ul>
+{{end}}
 
+{{if $d.Built}}
+<div class="msg msg-notice built-offer">
+  <span>When the build above finishes, redeploy to run the new images.</span>
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/action/redeploy">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary" data-command="{{$d.Redeploy}}" data-title="Redeploy {{$d.Stack.Project}}?">{{template "i-deploy"}}Redeploy</button>
+  </form>
+</div>
+{{end}}
 {{if $d.JobID}}
 <section class="job" data-job="{{$d.JobID}}">
   <div class="job-head"><strong>Output</strong> <span class="job-status">Connecting...</span></div>
@@ -56,6 +82,8 @@
   <a href="?tab=services" {{if eq $d.Tab "services"}}aria-current="page"{{end}}>Services</a>
   {{if $d.Folder.Meta}}<a href="?tab=logs" {{if eq $d.Tab "logs"}}aria-current="page"{{end}}>Logs</a>{{end}}
   <a href="?tab=history" {{if eq $d.Tab "history"}}aria-current="page"{{end}}>History</a>
+  {{if $d.Folder.Meta}}<a href="?tab=updates" {{if eq $d.Tab "updates"}}aria-current="page"{{end}}>Updates</a>{{end}}
+  {{if $d.Folder.ComposeFile}}<a href="?tab=convert" {{if eq $d.Tab "convert"}}aria-current="page"{{end}}>Convert</a>{{end}}
 </nav>
 
 {{if eq $d.Tab "compose"}}
@@ -83,6 +111,47 @@
   </tbody>
 </table>
 </div>
+{{else if eq $d.Tab "updates"}}
+{{$u := $d.Updates}}
+<section class="form wide">
+  <h2>Auto-update</h2>
+  {{if $u.HasLast}}<p>Last run {{$u.Last.LastRun.Format "2006-01-02 15:04"}}:
+    {{if eq $u.Last.LastResult "ok"}}<span class="state"><span class="dot dot-ok"></span>ok</span>{{else if eq $u.Last.LastResult "skipped"}}<span class="flag">skipped</span>{{else}}<span class="flag flag-bad">failed</span>{{end}}
+    {{if $u.Last.LastMsg}}<span class="mono small">{{$u.Last.LastMsg}}</span>{{end}}</p>{{end}}
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/schedule">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <div class="field-row">
+      <label>Schedule
+        <select name="mode" data-schedule-mode>
+          <option value="off" {{if eq $u.Mode "off"}}selected{{end}}>Off</option>
+          <option value="daily" {{if eq $u.Mode "daily"}}selected{{end}}>Daily at 04:00</option>
+          <option value="weekly" {{if eq $u.Mode "weekly"}}selected{{end}}>Weekly, Sunday at 04:00</option>
+          <option value="custom" {{if eq $u.Mode "custom"}}selected{{end}}>Cron expression</option>
+        </select>
+      </label>
+      <label>Cron <input name="cron" class="mono" value="{{if eq $u.Mode "custom"}}{{$u.Cron}}{{end}}" placeholder="30 3 * * 1-5"><small>Minute, hour, day, month, weekday.</small></label>
+      <button type="submit">{{template "i-clock"}}Save schedule</button>
+    </div>
+  </form>
+  <p class="muted">Times are in the container's time zone: <strong>{{$u.Zone}}</strong>. Set <span class="mono">TZ</span> in Fleetling's compose file to change it.{{if $u.Next}} Next run: <span class="mono">{{$u.Next}}</span> ({{$u.Describe}}).{{end}}</p>
+  <p class="muted">Each run records every service's image ID, pulls, and runs <span class="mono">up -d</span> only if an image changed. A stack whose files changed outside Fleetling is skipped and stays flagged for review.{{if $d.Self}} Fleetling's own stack runs through the update helper instead.{{end}}</p>
+  {{if $u.Command}}
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/update-now">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary" data-command="{{$u.Command}}" data-title="Pull and redeploy {{$d.Stack.Project}} now?">{{template "i-update"}}Pull and redeploy now</button>
+  </form>
+  {{end}}
+</section>
+<h2>Image updates</h2>
+<div hx-get="/stacks/{{$d.Folder.Name}}/updates/check" hx-trigger="load" hx-swap="innerHTML"><p class="muted">Asking the registries...</p></div>
+{{else if eq $d.Tab "convert"}}
+<p>Convert this stack's compose file to Podman Quadlet units or Kubernetes manifests, with a list of what won't carry over. Nothing is installed or applied; you can save the result into <span class="mono">{{$d.Folder.Dir}}/quadlet/</span> or <span class="mono">{{$d.Folder.Dir}}/k8s/</span>.</p>
+{{if eq $d.Stack.Engine "podman"}}<p class="muted">This stack already runs on Podman through Fleetling and needs no conversion for that. Quadlet output is for running it under systemd without Fleetling.</p>{{end}}
+<form method="post" action="/convert">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  <input type="hidden" name="stack" value="{{$d.Folder.Name}}">
+  <button type="submit" name="do" value="convert" class="primary">{{template "i-convert"}}Convert {{$d.Folder.Name}}</button>
+</form>
 {{else}}
   {{template "action_rows" $d.Recent}}
   <p><a href="/actions?target={{$d.Folder.Name}}">Full history</a></p>

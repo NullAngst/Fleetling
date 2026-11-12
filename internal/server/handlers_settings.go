@@ -163,6 +163,11 @@ type engineTestData struct {
 	Info engine.Info
 	Err  string
 	Note string
+
+	// Podman only: is podman-restart.service enabled on the host.
+	RestartChecked bool
+	RestartOK      bool
+	RestartErr     string
 }
 
 // engineTest answers the Test button next to an endpoint field. It tests
@@ -192,6 +197,16 @@ func (s *Server) engineTest(w http.ResponseWriter, r *http.Request) {
 			d.Note = "This is Podman answering on the Docker path (podman-docker). It works, but put it in the Podman field instead so builds and other Podman-specific handling apply."
 		case slot == compose.EnginePodman && info.Kind == engine.KindDocker:
 			d.Note = "This is Docker, not Podman. Put it in the Docker field."
+		}
+		if info.Kind == engine.KindPodman {
+			st, err := s.store.LoadSettings(r.Context(), s.cfg.DefaultRoot)
+			if err == nil {
+				d.RestartChecked = true
+				d.RestartOK, err = s.podmanRestartEnabled(r.Context(), st)
+			}
+			if err != nil {
+				d.RestartErr = err.Error()
+			}
 		}
 	}
 	s.render(w, http.StatusOK, "partial_engine_test", d)

@@ -1,0 +1,14 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>{{if eq $d.Mode "restart"}}Restarting{{else}}Updating{{end}}, reconnecting</h1>
+    <p class="subtitle">A helper container named <span class="mono">fleetling-updater</span> is doing the work. This page keeps trying until the new Fleetling answers.</p>
+  </div>
+</header>
+<section class="job" data-self-update data-boot="{{$d.Boot}}">
+  <div class="job-head"><strong>last-update.log</strong> <span class="job-status" data-self-status>Waiting for the helper...</span></div>
+  <pre class="job-out mono" data-self-log></pre>
+</section>
+<p class="muted">If nothing changes for a few minutes, check the helper from the host: <span class="mono">docker logs fleetling-updater</span>. The full log is on the <a href="/self/last-update">last update</a> page once Fleetling is back.</p>
+{{end}}

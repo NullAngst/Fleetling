@@ -7,7 +7,7 @@
   {{range .}}
     <tr>
       <td data-label="Time" class="mono nowrap">{{.Started.Format "2006-01-02 15:04:05"}}</td>
-      <td data-label="Target" class="target">{{if hasPrefix .Target "container/"}}<span class="mono">{{.Target}}</span>{{else}}<a class="mono" href="/stacks/{{.Target}}">{{.Target}}</a>{{end}}</td>
+      <td data-label="Target" class="target">{{if or (hasPrefix .Target "container/") (hasPrefix .Target "build/")}}<span class="mono">{{.Target}}</span>{{else}}<a class="mono" href="/stacks/{{.Target}}">{{.Target}}</a>{{end}}</td>
       <td data-label="Exit" class="mono nowrap">{{if .ExitCode}}{{if eq (deref .ExitCode) 0}}<span class="dot dot-ok"></span>0{{else}}<span class="dot dot-stopped"></span>{{deref .ExitCode}}{{end}}{{else}}<span class="muted">running or interrupted</span>{{end}}</td>
       <td data-label="Command">
         <details>

@@ -271,3 +271,126 @@ function colourYaml(pre) {
   pre.replaceChildren(frag);
 }
 for (const pre of document.querySelectorAll('pre[data-lang="yaml"]')) colourYaml(pre);
+
+// Self-update: poll /healthz until a different process answers, showing
+// the helper's log while waiting. Fetch errors are expected while the
+// container is being replaced, so they only update the status text.
+for (const box of document.querySelectorAll("[data-self-update]")) {
+  const status = box.querySelector("[data-self-status]");
+  const logEl = box.querySelector("[data-self-log]");
+  const boot = box.dataset.boot;
+  const started = Date.now();
+  const tick = async () => {
+    try {
+      const r = await fetch("/healthz", { cache: "no-store" });
+      const now = r.headers.get("X-Fleetling-Boot");
+      if (r.ok && now && now !== boot) {
+        status.textContent = "Back. Opening the log...";
+        location.href = "/self/last-update?done=1";
+        return;
+      }
+      status.textContent = "The old Fleetling is still answering";
+      const l = await fetch("/self/log", { cache: "no-store" });
+      if (l.ok) {
+        logEl.textContent = await l.text();
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    } catch {
+      status.textContent = "Fleetling is restarting, retrying...";
+    }
+    // Builds from the repo can take a while; give up polling after 30 minutes.
+    if (Date.now() - started < 30 * 60 * 1000) setTimeout(tick, 2000);
+    else status.textContent = "Still not back after 30 minutes. Check the helper from the host.";
+  };
+  setTimeout(tick, 1500);
+}
+
+// New stack: suggest an engine from the compose text. The server reads the
+// file for Podman-only settings and says which line it found. A choice the
+// user made by hand is never overridden.
+{
+  const composeBox = document.querySelector('form[action="/stacks/new"] textarea[name="compose"]');
+  const why = document.querySelector("[data-engine-why]");
+  const sel = document.querySelector("select[data-engine-suggest]");
+  if (composeBox && why) {
+    if (sel) sel.addEventListener("change", () => { sel.dataset.touched = "1"; });
+    const csrf = document.querySelector('meta[name="csrf-token"]');
+    let timer = null;
+    const check = async () => {
+      try {
+        const r = await fetch("/stacks/detect", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded", "X-CSRF-Token": csrf ? csrf.content : "" },
+          body: new URLSearchParams({ compose: composeBox.value }),
+        });
+        if (!r.ok) return;
+        const rep = await r.json();
+        why.textContent = rep.why;
+        why.hidden = !rep.why;
+        if (sel && !sel.dataset.touched) {
+          const def = sel.dataset.default || (sel.dataset.default = sel.options[0].value);
+          sel.value = rep.engine || def;
+        }
+      } catch { /* offline; leave the form as it is */ }
+    };
+    composeBox.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(check, 500); });
+  }
+}
+
+// Stack build page: the command under the button follows the toggles, so
+// the confirm always shows exactly what runs.
+for (const form of document.querySelectorAll("[data-build-preview]")) {
+  const out = form.querySelector("[data-build-command]");
+  const btn = form.querySelector("button[data-command]");
+  const flags = [...form.querySelectorAll("[data-build-flag]")];
+  const update = () => {
+    const pull = flags.find((f) => f.dataset.buildFlag === "pull").checked;
+    const nc = flags.find((f) => f.dataset.buildFlag === "nocache").checked;
+    const v = form.querySelector(`[data-build-variant="${pull},${nc}"]`);
+    if (v) { out.textContent = v.value; btn.dataset.command = v.value; }
+  };
+  flags.forEach((f) => f.addEventListener("change", update));
+}
+
+// Tabs that switch panels on the same page (the converter). Without
+// JavaScript every panel shows and the tabs are plain anchors.
+for (const nav of document.querySelectorAll("[data-tabs]")) {
+  const links = [...nav.querySelectorAll("a[href^='#']")];
+  const show = (id) => {
+    links.forEach((a) => {
+      const on = a.getAttribute("href") === "#" + id;
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      const panel = document.getElementById(a.getAttribute("href").slice(1));
+      if (panel) panel.hidden = !on;
+    });
+  };
+  links.forEach((a) => a.addEventListener("click", (e) => { e.preventDefault(); show(a.getAttribute("href").slice(1)); }));
+  show(links[0].getAttribute("href").slice(1));
+}
+
+// Copy buttons copy the <pre> in their pane.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-copy]");
+  if (!btn) return;
+  const pre = btn.closest(".pane")?.querySelector("pre");
+  if (!pre) return;
+  try {
+    await navigator.clipboard.writeText(pre.textContent);
+    btn.textContent = "Copied";
+  } catch {
+    // Clipboard needs a secure context; select the text instead.
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    btn.textContent = "Selected";
+  }
+  setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+});
+
+// Converter: picking a stack hides the paste box.
+for (const sel of document.querySelectorAll("[data-convert-source]")) {
+  const paste = document.querySelector("[data-convert-paste]");
+  sel.addEventListener("change", () => { if (paste) paste.hidden = sel.value !== ""; });
+}

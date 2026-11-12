@@ -1,0 +1,33 @@
+{{define "content"}}
+{{$d := .Data}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/">Stacks</a><a href="/stacks/{{$d.Folder.Name}}">{{$d.Folder.Name}}</a></nav>
+<header class="page-head">
+  <div class="title-block">
+    <h1>Move to {{if $d.To}}{{$d.To}}{{else}}another engine{{end}}</h1>
+    {{if $d.From}}<p class="subtitle">{{$d.Folder.Name}} runs on {{$d.From}} now.</p>{{end}}
+  </div>
+</header>
+{{if $d.Refusal}}<div class="msg msg-error">{{$d.Refusal}}</div>
+{{else}}
+<section class="removal">
+  <div class="dialog-band"></div>
+  <div class="removal-body">
+    <p class="lede">Moving stops the stack on {{$d.From}}, then starts it on {{$d.To}}, which pulls every image again.</p>
+    <ul>
+      <li><strong>Named volumes do not move.</strong> Their data stays inside {{$d.From}}, and the stack starts on {{$d.To}} with empty ones. Copy the data first if it matters.</li>
+      <li>Bind mounts under the root are unaffected: both engines see the same folders.</li>
+      <li>Fleetling rewrites the engine in <span class="mono">{{$d.Folder.Dir}}/.fleetling.toml</span> between the two steps.</li>
+    </ul>
+    <h3>Commands</h3>
+    <pre class="code mono wrap-cmd">{{$d.DownCmd}}
+{{$d.UpCmd}}</pre>
+    <form method="post" action="/stacks/{{$d.Folder.Name}}/engine">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="to" value="{{$d.To}}">
+      <button type="submit" class="danger" data-danger data-title="Move {{$d.Folder.Name}} to {{$d.To}}? Named volume data stays on {{$d.From}}." data-command="{{$d.DownCmd}} && {{$d.UpCmd}}">Move to {{$d.To}}</button>
+      <a class="button" href="/stacks/{{$d.Folder.Name}}">Cancel</a>
+    </form>
+  </div>
+</section>
+{{end}}
+{{end}}

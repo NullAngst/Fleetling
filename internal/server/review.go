@@ -17,7 +17,7 @@ import (
 // user approves them. Any compose action first compares the files on disk
 // with that record. If they differ, or nothing was ever recorded, the
 // action is refused and the stack is flagged until the user reviews the
-// changes. The scheduled auto-update in a later phase uses the same check
+// changes. The scheduled auto-update uses the same check
 // and skips a flagged stack instead of deploying it.
 
 // Review states.

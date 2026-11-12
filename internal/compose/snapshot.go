@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,13 +21,18 @@ import (
 // deploy (or a scheduled update) would run whatever it wrote.
 //
 // Covered: the compose file, .env, .fleetling.toml, every env_file a
-// service names, every file pulled in with include:, and every
-// extends: file. Not covered: build contexts and Dockerfiles, and the
-// files behind configs:/secrets:, which apps often own and rewrite.
+// service names, every file pulled in with include:, every extends:
+// file, and every local build context with its Dockerfile (see
+// buildctx.go). Not covered: the files behind configs:/secrets:, which
+// apps often own and rewrite, and git build contexts, which are fetched
+// fresh on each build.
 
 // Snapshot is the recorded state of a stack's deployment files.
 type Snapshot struct {
 	Files []FileState `json:"files"`
+	// BuildPartial is set when a build context was bigger than the caps
+	// and only part of it was recorded.
+	BuildPartial bool `json:"build_partial,omitempty"`
 }
 
 // FileState is one file in a snapshot. Content is kept so a review can
@@ -44,9 +50,11 @@ const maxSnapshotContent = 1 << 20
 // TakeSnapshot reads the current deployment files of a stack folder.
 func TakeSnapshot(f Folder) (Snapshot, error) {
 	paths := []string{MetaFile, ".env"}
+	var composeText []byte
 	if f.ComposeFile != "" {
 		paths = append([]string{f.ComposeFile}, paths...)
 		if b, err := readSmall(filepath.Join(f.Dir, f.ComposeFile)); err == nil {
+			composeText = b
 			paths = append(paths, referencedFiles(b)...)
 		}
 	}
@@ -68,6 +76,18 @@ func TakeSnapshot(f Folder) (Snapshot, error) {
 		}
 		fs.Path = displayPath(f.Dir, abs)
 		snap.Files = append(snap.Files, fs)
+	}
+	if composeText != nil {
+		ctxFiles, partial, err := contextFiles(composeText, f.Dir)
+		if err != nil {
+			return Snapshot{}, fmt.Errorf("read build context: %w", err)
+		}
+		snap.BuildPartial = partial
+		for _, cf := range ctxFiles {
+			if !seen[filepath.Join(f.Dir, cf.Path)] && !seen[cf.Path] {
+				snap.Files = append(snap.Files, cf)
+			}
+		}
 	}
 	return snap, nil
 }
