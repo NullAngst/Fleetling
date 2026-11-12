@@ -1,7 +1,9 @@
 name: deps
 
-# Weekly: move every Go module and npm package to its newest release,
-# rebuild the image against the newest base images, and open a PR.
+# Weekly: move Go itself, every Go module and every npm package to its
+# newest release, rebuild the image against the newest base images, and
+# open a PR. govulncheck and npm audit gate the PR: if either finds
+# something, no PR is opened and the run is red.
 # Run it by hand once after the first push to commit go.sum.
 on:
   schedule:
@@ -33,8 +35,23 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-      - name: Go modules
-        run: go get -u ./... && go mod tidy
+      - name: DEPS_TOKEN still works
+        if: env.HAS_DEPS_TOKEN == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.DEPS_TOKEN }}
+        run: |
+          # Fine-grained tokens expire. An expired one fails the PR step
+          # with "Bad credentials", so check it first and fall back to the
+          # built-in token, with a warning that says what to do.
+          if gh api "repos/$GITHUB_REPOSITORY" --jq .full_name >/dev/null 2>&1; then
+            echo "DEPS_TOKEN works."
+          else
+            echo "::warning::DEPS_TOKEN has expired or was revoked. Make a new one (maintenance.md, step 2). This run falls back to the built-in token: no pinned-action moves, and CI won't run on the PR."
+            echo "HAS_DEPS_TOKEN=false" >> "$GITHUB_ENV"
+          fi
+      - name: Go and Go modules
+        # go get go@latest moves the go line in go.mod to the newest Go.
+        run: go get go@latest && go get -u ./... && go mod tidy
       - name: npm packages
         working-directory: web/src
         # --ignore-scripts: freshly bumped packages get no install hooks.
@@ -44,6 +61,11 @@ jobs:
       - run: go vet ./...
       - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
       - run: go test -race ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: npm audit
+        working-directory: web/src
+        run: npm audit
       - name: Image builds against the newest base images
         run: docker build --pull -t fleetling:deps-check .
       - name: Pinned actions
@@ -76,11 +98,11 @@ jobs:
         with:
           # The built-in token can't push workflow changes, and PRs it
           # opens don't run CI. DEPS_TOKEN fixes both when it is set.
-          token: ${{ secrets.DEPS_TOKEN || github.token }}
+          token: ${{ env.HAS_DEPS_TOKEN == 'true' && secrets.DEPS_TOKEN || github.token }}
           branch: deps/weekly
           delete-branch: true
           commit-message: "Update dependencies"
           title: "Weekly dependency update"
           body: |
-            Automated update: `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`, and the pinned third-party actions moved to the commit of their newest release.
-            vet, staticcheck, the race tests and an image build with `--pull` all passed in the deps run before this PR was opened.
+            Automated update: `go get go@latest`, `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`, and the pinned third-party actions moved to the commit of their newest release.
+            vet, staticcheck, the race tests, govulncheck, npm audit and an image build with `--pull` all passed in the deps run before this PR was opened.
