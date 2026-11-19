@@ -1,7 +1,7 @@
 name: build
 
 # Pushes and PRs run the checks. Releases are made by hand:
-#   1. Releases, Draft a new release, make a new tag (v1.2.3), publish.
+#   1. Releases, Draft a new release, make a new tag (v1.2.0), publish.
 #   2. Actions, build, Run workflow, pick that tag under "Use workflow
 #      from", Run workflow.
 # The checks run on the tag, then the release job attaches the binaries
@@ -44,6 +44,37 @@ jobs:
       - run: go vet ./...
       - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
       - run: go test -race ./...
+      # The deps workflow runs this too, but changes pushed straight to
+      # main never go through that one.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  # The browser code in a real browser. The deps workflow takes new major
+  # versions of htmx, CodeMirror and xterm, and nothing else tests the
+  # browser side, so this loads every page in headless Chrome and fails on
+  # a console error, an uncaught exception or a missing asset, and checks
+  # that the editor and the shell actually start. See web/src/smoke.mjs.
+  web-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Build web assets and the binary
+        run: |
+          (cd web/src && npm ci --ignore-scripts && npm run build)
+          if [ ! -f go.sum ]; then go mod tidy; fi
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/fleetling" ./cmd/fleetling
+      - name: Smoke test
+        working-directory: web/src
+        run: bash smoke.sh "$RUNNER_TEMP/fleetling"
 
   # Same engine API the server talks to. The runner's own Docker daemon is
   # used instead of docker:dind, since it is a real engine with nothing extra
@@ -129,14 +160,17 @@ jobs:
           docker run --rm --entrypoint kompose fleetling:ci version
           docker run --rm --entrypoint podlet fleetling:ci --version
 
-  release:
+  # The release is two jobs. This one checks out the code, runs npm and
+  # Go, and builds the binaries, with a read-only token. The next one holds
+  # the write token and runs nothing but GitHub's own artifact download and
+  # gh, so no build tool or package ever runs next to a token that can
+  # change the repository.
+  release-build:
     # Only a manual run attaches anything. Run on a branch, the checks run
     # and this job stops with a message saying to pick the tag.
     if: github.event_name == 'workflow_dispatch'
-    needs: [test, integration-docker, integration-podman, image]
+    needs: [test, web-smoke, integration-docker, integration-podman, image]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Run on a tag with a release
         env:
@@ -152,8 +186,6 @@ jobs:
           fi
       - uses: actions/checkout@v7
         with:
-          # No job here needs to push with git, so keep the token out of
-          # .git/config where any build or test step could read it.
           persist-credentials: false
       - uses: actions/setup-go@v7
         with:
@@ -175,10 +207,29 @@ jobs:
               -o dist/fleetling-linux-$arch ./cmd/fleetling
           done
           cd dist && sha256sum fleetling-* > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-files
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-files
+          path: dist
       # GitHub's own CLI, which every runner has, so no third-party action
       # holds this job's write token. --clobber replaces the files if the
       # workflow is run again on the same tag.
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+        run: |
+          cd dist && sha256sum -c SHA256SUMS
+          gh release upload "$GITHUB_REF_NAME" ./* --clobber --repo "$GITHUB_REPOSITORY"

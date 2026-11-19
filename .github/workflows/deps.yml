@@ -2,21 +2,114 @@ name: deps
 
 # Weekly: move Go itself, every Go module and every npm package to its
 # newest release, rebuild the image against the newest base images, and
-# open a PR. govulncheck and npm audit gate the PR: if either finds
-# something, no PR is opened and the run is red.
+# open a PR. govulncheck, npm audit and the browser smoke test gate the PR:
+# if any of them fails, no PR is opened and the run is red.
 # Run it by hand once after the first push to commit go.sum.
+#
+# Two jobs, on purpose. "update" runs the freshly updated code (go test,
+# the npm build, the image build, the smoke test) with a read-only token
+# and no secrets, and hands its changes on as a patch. "pr" holds the
+# write token and DEPS_TOKEN, and runs nothing but git, gh and the pinned
+# create-pull-request action. Code that runs in a job can read every
+# secret that job was given, straight out of the runner's memory, so the
+# new packages never share a job with a token.
 on:
   schedule:
     - cron: "0 5 * * 1"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Go and Go modules
+        # go get go@latest moves the go line in go.mod to the newest Go.
+        run: go get go@latest && go get -u ./... && go mod tidy
+      - name: npm packages
+        working-directory: web/src
+        # --ignore-scripts: freshly bumped packages get no install hooks.
+        run: npx --yes npm-check-updates -u && npm install --ignore-scripts && npm run build
+      - run: go vet ./...
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+      - run: go test -race ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: npm audit
+        working-directory: web/src
+        run: npm audit
+      - name: Browser smoke test
+        run: |
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/fleetling" ./cmd/fleetling
+          bash web/src/smoke.sh "$RUNNER_TEMP/fleetling"
+      - name: Image builds against the newest base images
+        run: docker build --pull -t fleetling:deps-check .
+      - name: Pinned actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Third-party actions are pinned to a full commit, with the
+          # release it came from after the #. Move each one to the commit
+          # of its newest release. The pin stays a commit, so a tag moved
+          # later can't swap the code, and the PR shows every change. The
+          # pr job drops these edits when DEPS_TOKEN can't push them.
+          set -euo pipefail
+          for f in .github/workflows/*.yml; do
+            grep -oE 'uses: [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}' "$f" | sort -u | while read -r _ ref; do
+              repo=${ref%@*}
+              old=${ref#*@}
+              tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name) || { echo "::warning::could not read the latest release of $repo"; continue; }
+              [[ $tag =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::warning::unexpected tag name from $repo"; continue; }
+              sha=$(gh api "repos/$repo/commits/$tag" --jq .sha) || { echo "::warning::could not resolve $repo $tag"; continue; }
+              [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::warning::unexpected commit from $repo"; continue; }
+              [ "$sha" = "$old" ] && continue
+              sed -i -E "s|$repo@$old( # [^ ]+)?|$repo@$sha # $tag|" "$f"
+              echo "$f: $repo now at $tag ($sha)"
+            done
+          done
+      - name: Patch
+        id: patch
+        run: |
+          # Everything tracked that changed, as one binary-safe patch.
+          # Ignored files (node_modules, the built assets) stay out.
+          git add -A
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Nothing changed."
+            exit 0
+          fi
+          git diff --cached --binary > "$RUNNER_TEMP/deps.patch"
+          git diff --cached --stat
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - if: steps.patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: deps-patch
+          path: ${{ runner.temp }}/deps.patch
+          if-no-files-found: error
+          retention-days: 3
+
+  pr:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       # True once the DEPS_TOKEN secret exists. Moving the pinned actions
       # edits files under .github/workflows, and GitHub never lets the
@@ -25,16 +118,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # This job runs freshly updated third-party code (go test, the
-          # npm build). Keep the write token out of .git/config so none of
-          # that can push. The pull-request step passes its own token.
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/download-artifact@v8
         with:
-          go-version: stable
-      - uses: actions/setup-node@v7
-        with:
-          node-version: lts/*
+          name: deps-patch
+          path: ${{ runner.temp }}
       - name: DEPS_TOKEN still works
         if: env.HAS_DEPS_TOKEN == 'true'
         env:
@@ -49,51 +137,18 @@ jobs:
             echo "::warning::DEPS_TOKEN has expired or was revoked. Make a new one (maintenance.md, step 2). This run falls back to the built-in token: no pinned-action moves, and CI won't run on the PR."
             echo "HAS_DEPS_TOKEN=false" >> "$GITHUB_ENV"
           fi
-      - name: Go and Go modules
-        # go get go@latest moves the go line in go.mod to the newest Go.
-        run: go get go@latest && go get -u ./... && go mod tidy
-      - name: npm packages
-        working-directory: web/src
-        # --ignore-scripts: freshly bumped packages get no install hooks.
-        run: npx --yes npm-check-updates -u && npm install --ignore-scripts && npm run build
-      # PRs opened with the built-in token do not trigger other workflows,
-      # so the checks run here before the PR exists.
-      - run: go vet ./...
-      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
-      - run: go test -race ./...
-      - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-      - name: npm audit
-        working-directory: web/src
-        run: npm audit
-      - name: Image builds against the newest base images
-        run: docker build --pull -t fleetling:deps-check .
-      - name: Pinned actions
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Apply the update
         run: |
-          # Third-party actions are pinned to a full commit, with the
-          # release it came from after the #. Move each one to the commit
-          # of its newest release. The pin stays a commit, so a tag moved
-          # later can't swap the code, and the PR shows every change.
-          set -euo pipefail
-          for f in .github/workflows/*.yml; do
-            grep -oE 'uses: [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}' "$f" | sort -u | while read -r _ ref; do
-              repo=${ref%@*}
-              old=${ref#*@}
-              tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name) || { echo "::warning::could not read the latest release of $repo"; continue; }
-              [[ $tag =~ ^[A-Za-z0-9._-]+$ ]] || { echo "::warning::unexpected tag name from $repo"; continue; }
-              sha=$(gh api "repos/$repo/commits/$tag" --jq .sha) || { echo "::warning::could not resolve $repo $tag"; continue; }
-              [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::warning::unexpected commit from $repo"; continue; }
-              [ "$sha" = "$old" ] && continue
-              if [ "$HAS_DEPS_TOKEN" != "true" ]; then
-                echo "::warning::$repo has a newer release, $tag. Add the DEPS_TOKEN secret and this workflow moves it for you."
-                continue
-              fi
-              sed -i -E "s|$repo@$old( # [^ ]+)?|$repo@$sha # $tag|" "$f"
-              echo "$f: $repo now at $tag ($sha)"
+          git apply --index "$RUNNER_TEMP/deps.patch"
+          rm -f "$RUNNER_TEMP/deps.patch"
+          if [ "$HAS_DEPS_TOKEN" != "true" ] && ! git diff --cached --quiet -- .github/workflows; then
+            # The built-in token can't push workflow files. Keep the rest.
+            git diff --cached --name-only -- .github/workflows | while read -r f; do
+              echo "::warning::$f has a newer pinned action. Add the DEPS_TOKEN secret and this workflow moves it for you."
             done
-          done
+            git restore --staged --worktree -- .github/workflows
+          fi
+          git diff --cached --stat
       - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           # The built-in token can't push workflow changes, and PRs it
@@ -105,4 +160,5 @@ jobs:
           title: "Weekly dependency update"
           body: |
             Automated update: `go get go@latest`, `go get -u ./...`, `go mod tidy`, `npm-check-updates -u`, and the pinned third-party actions moved to the commit of their newest release.
-            vet, staticcheck, the race tests, govulncheck, npm audit and an image build with `--pull` all passed in the deps run before this PR was opened.
+            vet, staticcheck, the race tests, govulncheck, npm audit, the browser smoke test and an image build with `--pull` all passed in the deps run before this PR was opened.
+            The update job ran the new packages with a read-only token. Read any change under `.github/workflows` before merging: those come from this PR, not from upstream packages.
