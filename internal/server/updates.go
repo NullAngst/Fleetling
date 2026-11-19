@@ -58,8 +58,8 @@ func (s *Server) autoUpdate(ctx context.Context, st store.Settings, f compose.Fo
 	if err != nil {
 		return nil, skip(err.Error())
 	}
-	// The drift gate. Zack's hard requirement: never update a stack whose
-	// files changed outside Fleetling. The stack keeps its review flag.
+	// The drift gate: never update a stack whose files changed outside
+	// Fleetling. The stack keeps its review flag.
 	if err := s.reviewedOrErr(ctx, f); err != nil {
 		return nil, skip(err.Error())
 	}
@@ -80,17 +80,22 @@ func (s *Server) autoUpdate(ctx context.Context, st store.Settings, f compose.Fo
 
 	// A stack the user stopped or took down stays that way: up -d would
 	// start it again.
-	if e, err := s.newEngine(hostFor(st, f.Meta.Engine)); err == nil {
-		ctrs, err := e.ProjectContainers(ctx, t.Project)
-		e.Close()
-		if err != nil {
-			return nil, skip("could not list the stack's containers: " + err.Error())
-		}
-		if !slices.ContainsFunc(ctrs, func(c engine.ProjectContainer) bool { return c.Running }) {
-			return nil, skip("nothing in this stack is running, and an update doesn't start a stopped stack")
-		}
+	// An engine that can't be reached is a skip too: without the
+	// container list there is no telling whether the stack was stopped.
+	e, err := s.newEngine(hostFor(st, f.Meta.Engine))
+	if err != nil {
+		return nil, skip("could not reach the " + f.Meta.Engine + " engine: " + err.Error())
+	}
+	ctrs, err := e.ProjectContainers(ctx, t.Project)
+	e.Close()
+	if err != nil {
+		return nil, skip("could not list the stack's containers: " + err.Error())
+	}
+	if !slices.ContainsFunc(ctrs, func(c engine.ProjectContainer) bool { return c.Running }) {
+		return nil, skip("nothing in this stack is running, and an update doesn't start a stopped stack")
 	}
 
+	guard := s.driftGuard(f)
 	before := map[string]string{} // service -> image ID before the pull
 	images := map[string]string{} // service -> image name
 	recordStep := "fleetling: record each service's image ID"
@@ -164,6 +169,12 @@ func (s *Server) autoUpdate(ctx context.Context, st store.Settings, f compose.Fo
 				return 0
 			}
 			j.Linef("fleetling: changed: %s", strings.Join(changed, ", "))
+			// The pull may have taken a while. Check once more right
+			// before up reads the files.
+			if err := guard(ctx); err != nil {
+				j.Linef("fleetling: stopped before up -d: %v", err)
+				return -1
+			}
 			return compose.RunCmd(j, s.runner.Command(s.base, t, "up", "-d"), compose.Quote(s.runner.Args(t, "up", "-d")))
 		}},
 	}
@@ -180,7 +191,7 @@ func (s *Server) autoUpdate(ctx context.Context, st store.Settings, f compose.Fo
 		return nil, err
 	}
 	job, err := s.jobs.Start(compose.JobSpec{
-		Target: f.Name, Engine: f.Meta.Engine, Steps: steps,
+		Target: f.Name, Engine: f.Meta.Engine, Steps: steps, Guard: guard,
 		Label: "Update " + f.Name, Back: "/stacks/" + f.Name + "?tab=updates",
 		Done: func(j *compose.Job) {
 			_, exit, fin := j.Result()
@@ -190,6 +201,10 @@ func (s *Server) autoUpdate(ctx context.Context, st store.Settings, f compose.Fo
 			}
 			if exit == 0 {
 				record(store.UpdateOK, "")
+			} else if len(tail) > 0 && strings.Contains(tail[len(tail)-1], errNeedsReview.Error()) {
+				// The files changed while the update ran. Nothing past
+				// that point was deployed; the stack waits for review.
+				record(store.UpdateSkipped, errNeedsReview.Error())
 			} else {
 				msg := fmt.Sprintf("exit %d", exit)
 				if len(tail) > 0 {

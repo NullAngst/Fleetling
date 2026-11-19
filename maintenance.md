@@ -13,9 +13,10 @@ The deps workflow runs every Monday and opens a PR called "Weekly dependency upd
 
 1. Open the Pull requests tab.
 2. Open the newest "Weekly dependency update". There's only ever one; each week's replaces the last.
-3. Scroll to the checks at the bottom. Green means vet, staticcheck, the race tests, govulncheck, npm audit and an image build all passed.
-4. If green, click Merge pull request, then Confirm merge.
-5. If there's no PR this week, open the Actions tab, click deps on the left, and open the newest run. Green with no PR means nothing changed. Red means it found a problem and didn't open one.
+3. Scroll to the checks at the bottom. Green means vet, staticcheck, the race tests, govulncheck, npm audit, the browser smoke test and an image build all passed.
+4. Click Files changed. If anything under `.github/workflows` changed, read it. The only edits that belong there are the pinned `create-pull-request` commit and the `# v...` after it. Anything else in a workflow file didn't come from a package update; don't merge it, and find out where it came from.
+5. If green, click Merge pull request, then Confirm merge.
+6. If there's no PR this week, open the Actions tab, click deps on the left, and open the newest run. Green with no PR means nothing changed (the pr job shows as skipped). Red means it found a problem and didn't open one.
 
 Reading a red run: click it, then click the step with the red X. What it usually means:
 
@@ -27,7 +28,9 @@ Reading a red run: click it, then click the step with the red X. What it usually
 | go test -race | Real breakage from an update. The failing test name says which part. |
 | govulncheck | A known vulnerability in Go or a module, with no fixed version yet. The output names the module and the advisory. |
 | npm audit | Same, for the browser packages. |
+| Browser smoke test | A browser package's new version broke a page. The output lists each page and the console error or the part that didn't start (editor, shell). |
 | Image builds | A base image, the kompose download or the podlet build broke. See step 5 below. |
+| Apply the update | The patch from the update job didn't apply. Almost always a commit landed on main between the two jobs; run the workflow again. |
 | create-pull-request | The token. See step 2. |
 
 A red govulncheck or npm audit holds back the whole weekly update until the upstream fix ships. Check back next week, or bring the fix to me if it's urgent.
@@ -89,7 +92,7 @@ Every couple of months, skim the release notes of the things Fleetling leans on 
 1. The moby client. Fleetling imports `github.com/moby/moby/client` and `github.com/moby/moby/api`. Moby has been splitting its Go modules; if a deps run fails with "module declares its path as", the import path moved. Check the moby releases page for the new path.
 2. Compose CLI flags Fleetling passes: `--progress plain`, `--ansi never`, `config --format json`, `pull --ignore-buildable`, `up -d --no-build`. Check the Compose release notes for any of them being renamed or removed.
 3. kompose and podlet. The converter reads their output: podlet's `# FileName=` headers and `---` separators, kompose's multi-document YAML. If the Converter page shows a parse error after an image rebuild, one of those changed. Check `https://github.com/kubernetes/kompose/releases` and `https://github.com/containers/podlet/releases`. If kompose stops publishing `SHA256_SUM` with its releases, the image build fails at the kompose stage on purpose.
-4. Major versions of HTMX, CodeMirror and xterm.js. The deps workflow takes them as they come; a major version can change the API. If a page stops working after a deps merge, the browser's console (F12) names the script.
+4. Major versions of HTMX, CodeMirror and xterm.js. The deps workflow takes them as they come; a major version can change the API. The browser smoke test catches a page that throws or an editor or shell that doesn't start. It doesn't catch a button that quietly does nothing, so click around after a merge that moved one of them. If a page stops working, the browser's console (F12) names the script.
 
 ## 6. Stacks needing attention
 
@@ -130,6 +133,6 @@ The helper rolls back on its own when the new version doesn't come up healthy. I
 2. Under Choose a tag, type a new tag like `v1.2.0` and click Create new tag. Write the notes, then click Publish release.
 3. Open Actions, click build on the left, then Run workflow.
 4. Under Use workflow from, open Tags and pick that tag. Click the green Run workflow button.
-5. When the run is green, the release has `fleetling-linux-amd64`, `fleetling-linux-arm64` and `SHA256SUMS` attached. A red release job says why in its first step: a branch was picked instead of the tag, or the release doesn't exist yet.
+5. When the run is green, the release has `fleetling-linux-amd64`, `fleetling-linux-arm64` and `SHA256SUMS` attached. A red release-build job says why in its first step: a branch was picked instead of the tag, or the release doesn't exist yet.
 
 Now Fleetling is checked, updated and backed up, and you know what changed since last month.

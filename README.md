@@ -95,7 +95,9 @@ Then open `https://localhost:8420`.
 Two things that catch people out:
 
 - Docker publishes ports by writing its own iptables rules, and those skip UFW entirely. A `ufw deny 8420` does nothing for `"8420:8420"`. If your reverse proxy runs on the same host (NPMPlus with `network_mode: host` does), publish the port on loopback only, `"127.0.0.1:8420:8420"`, and point the proxy at `127.0.0.1:8420`. Then nothing but the proxy can reach Fleetling.
-- Turning TLS off (below) puts the password and the session cookie on the wire in cleartext, and anyone who captures the cookie is root on the host for seven days or until you use "Log out everywhere". Only turn it off with the port bound to `127.0.0.1` behind a proxy on the same host.
+- Turning TLS off (below) puts the password and the session cookie on the wire in cleartext, and anyone who captures the cookie is root on the host for seven days, or until that browser logs out or you use "Log out everywhere". Only turn it off with the port bound to `127.0.0.1` behind a proxy on the same host.
+
+Sessions last seven days. Log out ends that session for good: a copy of its cookie stops working too, and stays dead across restarts. Log out everywhere, and changing the password, end every session. Either way, open shells and log streams from those sessions close on the spot, and a shell left open closes when its session runs out.
 
 ### TLS
 
@@ -113,7 +115,7 @@ Behind NPMPlus, either set the proxy host's scheme to `https` (NPMPlus doesn't v
 
 ### Behind a reverse proxy
 
-Five failed logins from one address in 15 minutes locks that address out for 15 minutes. Behind a proxy, every request comes from the proxy's address. So one bad guess streak locks out everyone, including you.
+Five failed logins from one address in 15 minutes locks that address out for 15 minutes. A try counts the moment it starts, so firing a hundred logins at once gets five through, not a hundred. Password checks run two at a time with a short queue behind them; past that, a login gets "the server is busy" straight away instead of waiting in line. Behind a proxy, every request comes from the proxy's address. So one bad guess streak locks out everyone, including you.
 
 Fix it by telling Fleetling which addresses are your proxy:
 
@@ -240,9 +242,11 @@ A few things worth knowing:
 
 ## Changes made outside Fleetling
 
-Fleetling keeps a record of every managed stack's deployment files: the compose file, `.env`, `.fleetling.toml`, every `env_file` a service names, every file pulled in with `include:` or `extends:`, and every local build context with its Dockerfile. The record is updated whenever Fleetling writes those files itself (create, save, Manage, import, the first deploy's path tracking) and when you approve a review. It lives in Fleetling's database, not in the stack folder, so a container that can write its own folder can't rewrite it too.
+Fleetling keeps a record of every managed stack's deployment files: the compose file, `.env`, `.fleetling.toml`, every `env_file` a service names, every file pulled in with `include:` or `extends:`, and every local build context with its Dockerfile. The record is updated whenever Fleetling writes those files itself (create, save, import, the converter, the first deploy's path tracking, moving engines) and when you approve a review or click Manage. It lives in Fleetling's database, not in the stack folder, so a container that can write its own folder can't rewrite it too.
 
-Before any compose action, Deploy, Update, Restart, Recreate, Start, Stop or Down, the files on disk are compared with that record. If anything differs, nothing runs. The stack is flagged on the stacks page and its own page, and the action takes you to a review page with a side-by-side diff of every changed file. Approve, and the current files become the record; then run the action again. Editing a flagged stack also goes through the review first, since the editor would otherwise load the changed text and approve it on save without anyone looking.
+When Fleetling writes a file, only that file's record changes, and it's taken from the bytes Fleetling wrote, not read back from disk. Every other file keeps the state you last approved. That matters on a first deploy: the containers have just started, and one that rewrites its own `compose.yaml` while Fleetling records `created_paths` still gets flagged.
+
+Before any compose action, Deploy, Update, Restart, Recreate, Start, Stop or Down, the files on disk are compared with that record, and again before every step of the job. Update pulls before it runs `up -d`, and a slow pull is plenty of time for a container to change its folder. If anything differs, nothing runs, or the job stops at that step. The stack is flagged on the stacks page and its own page, and the action takes you to a review page with a side-by-side diff of every changed file. Approve, and the current files become the record; then run the action again. Editing a flagged stack also goes through the review first, since the editor would otherwise load the changed text and approve it on save without anyone looking.
 
 Why does Stop count? Because the project name lives in `.fleetling.toml`, and a changed project name would aim Stop or Down at a different stack.
 
@@ -366,7 +370,7 @@ Builds in the sidebar is for images that aren't part of a stack:
 3. Click Check command. The page shows the exact `docker build` line.
 4. Click Build. The log streams live and lands in the action log.
 
-A token in an `https://user:token@...` URL is stripped from the action log and the page, and scrubbed from the stored output. Save a build as a recipe and it gets a Run button on the Builds page. Recipes live in Fleetling's database (mode 600), git URLs as typed, token included.
+A token in an `https://user:token@...` URL is stripped from the action log and the page, and scrubbed from the stored output. Save a build as a recipe and it gets a Run button on the Builds page. Recipes live in Fleetling's database (mode 600), git URLs as typed, token included. While a build runs, the token is also on the `docker build` command line, which anything that can list processes in Fleetling's container can read. Use a read-only token scoped to that one repository.
 
 On Podman, builds run with BuildKit off, so `--progress` isn't passed and the output looks like the classic builder's.
 
@@ -407,8 +411,8 @@ The Updates tab on a managed stack sets a schedule: off (the default), daily at 
 
 Every run, scheduled or from the "Pull and redeploy now" button:
 
-1. Checks the stack's files against the approved record. A stack whose files changed outside Fleetling is skipped, never updated. The skip goes in the action log with the reason, the stack keeps its review flag, and the stacks page shows "auto-update skipped".
-2. Skips a stack with nothing running. An update never starts a stack you stopped or took down.
+1. Checks the stack's files against the approved record. A stack whose files changed outside Fleetling is skipped, never updated. The skip goes in the action log with the reason, the stack keeps its review flag, and the stacks page shows "auto-update skipped". The check runs again after the pull, right before `up -d`.
+2. Skips a stack with nothing running. An update never starts a stack you stopped or took down. If the engine doesn't answer, there's no telling, so that's a skip too.
 3. Records the image ID each running service uses.
 4. Runs `pull --ignore-buildable`. Services that build aren't pulled.
 5. Runs `up -d` only if an image ID changed, so nothing is recreated for no reason.
@@ -438,9 +442,10 @@ If a folder has a `compose.override.yaml`, Fleetling flags it. Fleetling runs Co
 
 You need Go and Node, latest stable of each.
 
-1. Bundle the browser code: `cd web/src && npm ci && npm run build && cd ../..`
+1. Bundle the browser code: `cd web/src && npm ci --ignore-scripts && npm run build && cd ../..`
 2. Build the binary: `CGO_ENABLED=0 go build -o fleetling ./cmd/fleetling`
 3. Run the tests: `go test -race ./...`
+4. Run the browser smoke test, if you have Docker and Chrome or Chromium: `bash web/src/smoke.sh ./fleetling`. It starts a throwaway Fleetling on `127.0.0.1:8420` and a throwaway `alpine` container, clicks through every page in headless Chrome, and fails on any console error, uncaught exception or missing asset, or when the editor or the shell doesn't start. Everything it made is gone afterwards.
 
 Skipping step 1 still builds; the pages then load without JavaScript and fall back to your system fonts.
 
@@ -455,13 +460,15 @@ Static binaries for linux amd64 and arm64, plus a `SHA256SUMS` file, get attache
 5. Click Run workflow. Under Use workflow from, open Tags and pick the tag you just made.
 6. Click the green Run workflow button.
 
-The tests, both integration jobs and the image build run first, on exactly the code in that tag. If they pass, the binaries land on the release. Pushing a tag on its own builds nothing.
+The tests, the browser smoke test, both integration jobs and the image build run first, on exactly the code in that tag. If they pass, one job builds the binaries with a read-only token, and a second job, the only one with write access, attaches them to the release. That second job runs GitHub's own artifact download and `gh`, nothing else. Pushing a tag on its own builds nothing.
 
 Two ways it stops on purpose, with the reason in the run: you picked a branch instead of the tag, or there's no release for that tag yet. Running it twice on the same tag replaces the files.
 
 ### Dependencies
 
-Fleetling always runs on the newest release of everything. The deps workflow runs every Monday: it moves the `go` line in `go.mod` to the newest Go, updates every Go module and npm package, runs the tests, `govulncheck` and `npm audit`, rebuilds the image with `--pull`, and opens a PR. The tradeoff is that a bad upstream release can break a build without warning. Tests gate every publish, so a broken release blocks the PR instead of reaching your server. `govulncheck` and `npm audit` gate it too, which means a vulnerability with no fix yet holds back the whole weekly update until one ships. The run log names it.
+Fleetling always runs on the newest release of everything. The deps workflow runs every Monday: it moves the `go` line in `go.mod` to the newest Go, updates every Go module and npm package, runs the tests, `govulncheck`, `npm audit` and the browser smoke test, rebuilds the image with `--pull`, and opens a PR.
+
+That's two jobs. The first runs all the freshly updated code with a read-only token and no secrets, and hands its changes on as a patch. The second applies the patch and opens the PR, and it's the only one that sees `DEPS_TOKEN`. Why split it? Code running in a job can read every secret that job was given, straight out of the runner's memory. A compromised package release would run in the first job, where there is nothing to steal. The tradeoff is that a bad upstream release can break a build without warning. Tests gate every publish, so a broken release blocks the PR instead of reaching your server. `govulncheck` and `npm audit` gate it too, which means a vulnerability with no fix yet holds back the whole weekly update until one ships. The run log names it.
 
 The image gets kompose and podlet at build time. podlet comes from `cargo install --locked podlet`, checked against crates.io. kompose can't be installed with `go install` (its `go.mod` has replace directives), so the Dockerfile downloads the latest release binary and checks it against the `SHA256_SUM` file published with that release. That catches a broken or swapped download. It can't catch a compromised release, since the sum comes from the same place.
 
@@ -474,7 +481,7 @@ The one third-party action, `peter-evans/create-pull-request`, is pinned to a co
 3. Under Permissions, set Contents, Pull requests and Workflows to Read and write.
 4. In this repository, open Settings, Secrets and variables, Actions, and add it as a secret named `DEPS_TOKEN`.
 
-Without it, the workflow still updates everything else and leaves a warning in the run when an action has a newer release. With it, the weekly PR also runs CI, which PRs opened by the built-in token don't. Fine-grained tokens expire. When one has, the deps run says "DEPS_TOKEN has expired or was revoked" and carries on with the built-in token; make a new one, as in `maintenance.md`.
+Without it, the workflow still updates everything else, drops the workflow file edits, and leaves a warning in the run when an action has a newer release. With it, the weekly PR also runs CI, which PRs opened by the built-in token don't. Fine-grained tokens expire. When one has, the deps run says "DEPS_TOKEN has expired or was revoked" and carries on with the built-in token; make a new one, as in `maintenance.md`.
 
 ## License
 

@@ -220,7 +220,11 @@ func (s *Server) saveConverted(ctx context.Context, f compose.Folder, sub string
 		return dir, err
 	}
 	if clean {
-		if err := s.recordBaseline(ctx, f.Dir, "convert"); err != nil {
+		wrote := map[string][]byte{}
+		for _, cf := range files {
+			wrote[filepath.Join(sub, cf.Name)] = []byte(cf.Content)
+		}
+		if err := s.recordWrites(ctx, f.Dir, "convert", wrote); err != nil {
 			s.log.Error("record baseline after convert", "err", err)
 		}
 	}

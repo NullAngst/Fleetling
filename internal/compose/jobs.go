@@ -69,6 +69,11 @@ type JobSpec struct {
 	Steps  []Step
 	// Before runs first; an error fails the job without running any step.
 	Before func(ctx context.Context, j *Job) error
+	// Guard runs before every step. An error stops the job there, the same
+	// as a failed step. Stack jobs use it to check drift review again: a
+	// pull or a build can take minutes, and a container can rewrite its
+	// own stack folder in that time.
+	Guard func(ctx context.Context) error
 	// After runs once every step has finished, with the final exit code.
 	After func(ctx context.Context, j *Job, exit int)
 	// Done is called last, after After, with the full output.
@@ -215,6 +220,13 @@ func (js *Jobs) run(j *Job, spec JobSpec) {
 	for _, s := range spec.Steps {
 		if exit != 0 {
 			break
+		}
+		if spec.Guard != nil {
+			if err := spec.Guard(ctx); err != nil {
+				j.Linef("fleetling: stopped before %s: %v", s.line(), err)
+				exit = -1
+				break
+			}
 		}
 		if s.Cmd == nil {
 			exit = s.Run(ctx, j)

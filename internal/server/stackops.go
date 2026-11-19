@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -48,12 +49,18 @@ func findAction(key string) (stackAction, bool) {
 }
 
 // loadFolder reads one stack folder by name. ok is false for a bad name,
-// a symlink, or a folder that isn't a stack.
+// a symlink, or a folder that isn't a stack. Discover skips symlinks when
+// it lists the root, and a stack opened by its URL gets the same rule: a
+// stack folder has to really live under the root.
 func loadFolder(st store.Settings, name string) (compose.Folder, bool) {
 	if !compose.ValidFolderName(name) {
 		return compose.Folder{}, false
 	}
-	return compose.ReadFolder(filepath.Join(st.Root, name))
+	dir := filepath.Join(st.Root, name)
+	if fi, err := os.Lstat(dir); err != nil || !fi.IsDir() {
+		return compose.Folder{}, false
+	}
+	return compose.ReadFolder(dir)
 }
 
 func hostFor(st store.Settings, slot string) string {
@@ -134,6 +141,7 @@ func (s *Server) runAction(ctx context.Context, st store.Settings, f compose.Fol
 		Target: f.Name,
 		Engine: f.Meta.Engine,
 		Steps:  steps,
+		Guard:  s.driftGuard(f),
 		Before: func(ctx context.Context, j *compose.Job) error {
 			if !tracking {
 				return nil
@@ -156,7 +164,10 @@ func (s *Server) runAction(ctx context.Context, st store.Settings, f compose.Fol
 			if exit != 0 || !tracking {
 				return
 			}
-			m, err := compose.ReadMeta(f.Dir)
+			// Start from the approved copy, not the file on disk: the
+			// containers just started, and one that mounts this folder
+			// could have written created_paths into it already.
+			m, err := s.approvedMeta(context.Background(), f)
 			if err != nil {
 				j.Linef("fleetling: could not update %s: %v", compose.MetaFile, err)
 				return
@@ -165,15 +176,17 @@ func (s *Server) runAction(ctx context.Context, st store.Settings, f compose.Fol
 			m.CreatedPaths = compose.MergePaths(m.CreatedPaths, created)
 			now := s.now().UTC().Truncate(time.Second)
 			m.Deployed = &now
-			if err := compose.WriteMeta(f.Dir, m, compose.OwnerOf(filepath.Join(f.Dir, compose.MetaFile))); err != nil {
+			b, err := compose.WriteMeta(f.Dir, m, compose.OwnerOf(filepath.Join(f.Dir, compose.MetaFile)))
+			if err != nil {
 				j.Linef("fleetling: could not update %s: %v", compose.MetaFile, err)
 				return
 			}
 			if len(created) > 0 {
 				j.Linef("fleetling: recorded created paths: %s", strings.Join(created, ", "))
 			}
-			// Fleetling just changed .fleetling.toml itself; that is not drift.
-			if err := s.recordBaseline(context.Background(), f.Dir, "deploy"); err != nil {
+			// Fleetling just changed .fleetling.toml itself; that is not
+			// drift. Only that file is recorded, from the bytes written.
+			if err := s.recordWrites(context.Background(), f.Dir, "deploy", map[string][]byte{compose.MetaFile: b}); err != nil {
 				j.Linef("fleetling: could not record the stack's files: %v", err)
 			}
 		},

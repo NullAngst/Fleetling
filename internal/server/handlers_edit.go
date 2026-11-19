@@ -195,9 +195,9 @@ func (s *Server) newStackSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err = s.writeNewStack(dir, existed, d)
+	wrote, err := s.writeNewStack(dir, existed, d)
 	if err == nil {
-		err = s.recordBaseline(ctx, dir, "create")
+		err = s.recordWrites(ctx, dir, "create", wrote)
 	}
 	s.logFileAction(ctx, d.FolderName, d.Engine, "fleetling: create stack "+d.Project+" in "+dir, err)
 	if err != nil {
@@ -220,24 +220,33 @@ func (s *Server) newStackSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/stacks/"+d.FolderName+"?saved=1", http.StatusSeeOther)
 }
 
-func (s *Server) writeNewStack(dir string, existed bool, d stackFormData) error {
+// writeNewStack writes a new stack's files and returns what it wrote, by
+// file name, for the approved snapshot.
+func (s *Server) writeNewStack(dir string, existed bool, d stackFormData) (map[string][]byte, error) {
 	var owner compose.Owner
 	if existed {
 		owner = compose.OwnerOf(dir)
 	} else if err := os.Mkdir(dir, 0o755); err != nil {
-		return err
+		return nil, err
 	}
-	if err := compose.WriteFileAtomic(filepath.Join(dir, "compose.yaml"), []byte(d.Compose), 0o644, owner); err != nil {
-		return err
+	wrote := map[string][]byte{"compose.yaml": []byte(d.Compose)}
+	if err := compose.WriteFileAtomic(filepath.Join(dir, "compose.yaml"), wrote["compose.yaml"], 0o644, owner); err != nil {
+		return nil, err
 	}
 	if d.Env != "" {
-		if err := compose.WriteFileAtomic(filepath.Join(dir, ".env"), []byte(d.Env), 0o600, owner); err != nil {
-			return err
+		wrote[".env"] = []byte(d.Env)
+		if err := compose.WriteFileAtomic(filepath.Join(dir, ".env"), wrote[".env"], 0o600, owner); err != nil {
+			return nil, err
 		}
 	}
-	return compose.WriteMeta(dir, &compose.Meta{
+	b, err := compose.WriteMeta(dir, &compose.Meta{
 		Project: d.Project, Engine: d.Engine, Created: time.Now().UTC().Truncate(time.Second),
 	}, owner)
+	if err != nil {
+		return nil, err
+	}
+	wrote[compose.MetaFile] = b
+	return wrote, nil
 }
 
 // readStackFiles returns the current compose and env text.
@@ -358,9 +367,9 @@ func (s *Server) editSubmit(w http.ResponseWriter, r *http.Request) {
 		render(http.StatusConflict, "files in this stack changed outside Fleetling. Review them on the stack page before saving")
 		return
 	}
-	err = s.saveStackFiles(f, oldE, envExists, d.Compose, d.Env)
+	wrote, err := s.saveStackFiles(f, oldE, envExists, d.Compose, d.Env)
 	if err == nil {
-		err = s.recordBaseline(ctx, f.Dir, "save")
+		err = s.recordWrites(ctx, f.Dir, "save", wrote)
 	}
 	s.logFileAction(ctx, f.Name, engineOf(f), "fleetling: save "+filepath.Join(f.Dir, f.ComposeFile)+" and .env", err)
 	if err != nil {
@@ -397,26 +406,37 @@ func engineOf(f compose.Folder) string {
 
 // saveStackFiles writes the compose file byte for byte, keeping its mode
 // and owner, and the env file at mode 600. An env file that never existed
-// is only created when there is something to put in it.
-func (s *Server) saveStackFiles(f compose.Folder, oldEnv string, envExists bool, composeText, envText string) error {
+// is only created when there is something to put in it. It returns what
+// it wrote, by the name the approved snapshot uses.
+func (s *Server) saveStackFiles(f compose.Folder, oldEnv string, envExists bool, composeText, envText string) (map[string][]byte, error) {
 	cpath := filepath.Join(f.Dir, f.ComposeFile)
 	mode := os.FileMode(0o644)
 	if fi, err := os.Stat(cpath); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	if err := compose.WriteFileAtomic(cpath, []byte(composeText), mode, compose.OwnerOf(cpath)); err != nil {
-		return err
+	wrote := map[string][]byte{f.ComposeFile: []byte(composeText)}
+	if err := compose.WriteFileAtomic(cpath, wrote[f.ComposeFile], mode, compose.OwnerOf(cpath)); err != nil {
+		return nil, err
 	}
 	if !envExists && envText == "" || envExists && envText == oldEnv {
-		return nil
+		return wrote, nil
 	}
 	ep, err := envPath(f.Dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	owner := compose.OwnerOf(ep)
 	if !owner.Set {
 		owner = compose.OwnerOf(f.Dir)
 	}
-	return compose.WriteFileAtomic(ep, []byte(envText), 0o600, owner)
+	if err := compose.WriteFileAtomic(ep, []byte(envText), 0o600, owner); err != nil {
+		return nil, err
+	}
+	// The snapshot names the file .env either way. When .env links to a
+	// file next to it, that file may also be named by an env_file line.
+	wrote[".env"] = []byte(envText)
+	if ep != filepath.Join(f.Dir, ".env") {
+		wrote[filepath.Base(ep)] = []byte(envText)
+	}
+	return wrote, nil
 }

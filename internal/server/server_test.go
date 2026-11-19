@@ -525,7 +525,7 @@ func TestPreauthBodyIsCapped(t *testing.T) {
 // saving it through Fleetling would.
 func (h *harness) approve(dir string) {
 	h.t.Helper()
-	if err := h.s.recordBaseline(context.Background(), dir, "test"); err != nil {
+	if err := h.s.recordBaseline(context.Background(), dir, "test", nil); err != nil {
 		h.t.Fatal(err)
 	}
 }

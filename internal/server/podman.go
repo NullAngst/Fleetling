@@ -243,13 +243,16 @@ func (s *Server) engineMove(w http.ResponseWriter, r *http.Request) {
 		{Cmd: s.runner.Command(s.base, from, "down")},
 		{Show: meta, Run: func(ctx context.Context, j *compose.Job) int {
 			j.Line(meta)
-			m, err := compose.ReadMeta(f.Dir)
+			// The approved copy, not the disk: down just ran, and the
+			// file is only trusted as it was last approved.
+			m, err := s.approvedMeta(context.Background(), f)
+			var b []byte
 			if err == nil {
 				m.Engine = d.To
-				err = compose.WriteMeta(f.Dir, m, compose.OwnerOf(filepath.Join(f.Dir, compose.MetaFile)))
+				b, err = compose.WriteMeta(f.Dir, m, compose.OwnerOf(filepath.Join(f.Dir, compose.MetaFile)))
 			}
 			if err == nil {
-				err = s.recordBaseline(context.Background(), f.Dir, "engine move")
+				err = s.recordWrites(context.Background(), f.Dir, "engine move", map[string][]byte{compose.MetaFile: b})
 			}
 			if err != nil {
 				j.Linef("fleetling: %v", err)
@@ -266,7 +269,7 @@ func (s *Server) engineMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job, err := s.jobs.Start(compose.JobSpec{
-		Target: f.Name, Engine: d.To, Steps: steps,
+		Target: f.Name, Engine: d.To, Steps: steps, Guard: s.driftGuard(f),
 		Label: "Move " + f.Name + " to " + d.To, Back: "/stacks/" + f.Name,
 		Done: func(j *compose.Job) {
 			_, exit, fin := j.Result()

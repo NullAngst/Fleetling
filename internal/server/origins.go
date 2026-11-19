@@ -41,5 +41,10 @@ func (s *Server) acceptWS(w http.ResponseWriter, r *http.Request) (*websocket.Co
 		// host only, so its check is turned off for this one request.
 		opts.InsecureSkipVerify = true
 	}
-	return websocket.Accept(w, r, opts)
+	c, err := websocket.Accept(w, r, opts)
+	if err != nil {
+		return nil, err
+	}
+	s.trackSocket(r, c)
+	return c, nil
 }

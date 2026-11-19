@@ -31,7 +31,7 @@ import (
 	"github.com/NullAngst/Fleetling/internal/updater"
 )
 
-// version is set at build time with -ldflags "-X main.version=v1.2.3".
+// version is set at build time with -ldflags "-X main.version=v1.2.0".
 var version = "dev"
 
 func main() {

@@ -136,6 +136,21 @@ func fileState(path string) (FileState, error) {
 	return st, nil
 }
 
+// StateOf is the FileState of a file holding exactly data. It is how a
+// snapshot records a file Fleetling wrote itself: from the bytes it wrote,
+// not from a later read of the disk that something else could have
+// changed in between.
+func StateOf(data []byte) FileState {
+	sum := sha256.Sum256(data)
+	st := FileState{Exists: true, SHA256: hex.EncodeToString(sum[:])}
+	if len(data) <= maxSnapshotContent {
+		st.Content = string(data)
+	} else {
+		st.TooLarge = true
+	}
+	return st
+}
+
 // referencedFiles lists the extra files a compose file reads: env_file,
 // include and extends. Paths are as written; relative ones resolve against
 // the stack folder, the same as Compose resolves them.

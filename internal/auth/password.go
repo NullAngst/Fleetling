@@ -2,12 +2,14 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
@@ -35,13 +37,39 @@ var DefaultParams = Params{Memory: 64 * 1024, Time: 3, Threads: 4, SaltLen: 16, 
 // reachable without a session, so without a cap a burst of concurrent
 // login posts allocates 64 MiB apiece until the kernel's OOM killer
 // starts picking containers. Two slots keep a real login fast while
-// bounding the worst case at about 128 MiB; extra requests queue.
+// bounding the worst case at about 128 MiB.
 var argonSlots = make(chan struct{}, 2)
 
-func idKey(pw, salt []byte, p Params, keyLen uint32) []byte {
-	argonSlots <- struct{}{}
+// maxArgonWaiting caps the queue behind the two slots. Past it a check is
+// refused with ErrBusy straight away instead of waiting, so a flood can't
+// park an unbounded number of requests in front of a real login.
+const maxArgonWaiting = 16
+
+var argonWaiting atomic.Int32
+
+// ErrBusy means too many password checks are already queued.
+var ErrBusy = errors.New("too many password checks at once, try again in a moment")
+
+// idKey runs argon2id once a slot is free. It gives up when ctx ends, so a
+// browser that went away doesn't keep its place in the queue.
+func idKey(ctx context.Context, pw, salt []byte, p Params, keyLen uint32) ([]byte, error) {
+	select {
+	case argonSlots <- struct{}{}:
+	default:
+		if argonWaiting.Add(1) > maxArgonWaiting {
+			argonWaiting.Add(-1)
+			return nil, ErrBusy
+		}
+		select {
+		case argonSlots <- struct{}{}:
+			argonWaiting.Add(-1)
+		case <-ctx.Done():
+			argonWaiting.Add(-1)
+			return nil, ctx.Err()
+		}
+	}
 	defer func() { <-argonSlots }()
-	return argon2.IDKey(pw, salt, p.Time, p.Memory, p.Threads, keyLen)
+	return argon2.IDKey(pw, salt, p.Time, p.Memory, p.Threads, keyLen), nil
 }
 
 // ErrMalformedHash means a stored hash could not be parsed.
@@ -70,7 +98,10 @@ func hashWith(pw string, p Params) (string, error) {
 	if _, err := rand.Read(salt); err != nil {
 		return "", err
 	}
-	key := idKey([]byte(pw), salt, p, p.KeyLen)
+	key, err := idKey(context.Background(), []byte(pw), salt, p, p.KeyLen)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
 		argon2.Version, p.Memory, p.Time, p.Threads, b64.EncodeToString(salt), b64.EncodeToString(key)), nil
 }
@@ -78,6 +109,13 @@ func hashWith(pw string, p Params) (string, error) {
 // VerifyPassword reports whether pw matches the stored hash. The comparison
 // is constant time.
 func VerifyPassword(encoded, pw string) (bool, error) {
+	return VerifyPasswordContext(context.Background(), encoded, pw)
+}
+
+// VerifyPasswordContext is VerifyPassword for a request: it stops waiting
+// for an argon2 slot when ctx ends, and returns ErrBusy when the queue is
+// full. Neither of those means the password was wrong.
+func VerifyPasswordContext(ctx context.Context, encoded, pw string) (bool, error) {
 	parts := strings.Split(encoded, "$")
 	// "", "argon2id", "v=19", "m=..,t=..,p=..", salt, hash
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
@@ -103,6 +141,9 @@ func VerifyPassword(encoded, pw string) (bool, error) {
 	if err != nil || len(want) < 16 || len(want) > 128 {
 		return false, ErrMalformedHash
 	}
-	got := idKey([]byte(pw), salt, p, uint32(len(want)))
+	got, err := idKey(ctx, []byte(pw), salt, p, uint32(len(want)))
+	if err != nil {
+		return false, err
+	}
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

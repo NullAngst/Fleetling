@@ -266,11 +266,11 @@ func (s *Server) manageStack(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	err = compose.WriteMeta(f.Dir, m, compose.OwnerOf(f.Dir))
+	b, err := compose.WriteMeta(f.Dir, m, compose.OwnerOf(f.Dir))
 	if err == nil {
 		// Managing is the moment the user looked at this folder and said
 		// "this is the stack", so its files become the approved state.
-		err = s.recordBaseline(ctx, f.Dir, "manage")
+		err = s.recordBaseline(ctx, f.Dir, "manage", map[string][]byte{compose.MetaFile: b})
 	}
 	s.logFileAction(ctx, f.Name, slot, "fleetling: write "+filepath.Join(f.Dir, compose.MetaFile)+" (project "+project+", engine "+slot+")", err)
 	if err != nil {

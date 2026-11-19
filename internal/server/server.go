@@ -102,8 +102,11 @@ type Server struct {
 
 	mu         sync.RWMutex
 	secret     []byte
-	setUp      bool   // a password exists
-	setupToken string // one-time token for first-run setup, empty once set up
+	setUp      bool                 // a password exists
+	setupToken string               // one-time token for first-run setup, empty once set up
+	revoked    map[string]time.Time // logged-out session IDs (hex) until they'd expire anyway
+
+	socks socketSet // live websockets, closed when their session ends
 }
 
 var errNotInContainer = errors.New("not running in a container")
@@ -147,6 +150,9 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 			return nil, err
 		}
 	}
+	if s.revoked, err = st.RevokedSessions(ctx, s.now()); err != nil {
+		return nil, err
+	}
 	_, s.setUp, err = st.Get(ctx, store.KeyPasswordHash)
 	if err != nil {
 		return nil, err
@@ -177,6 +183,22 @@ func (s *Server) pruneLoop() {
 		} else if n > 0 {
 			s.log.Info("pruned action log", "removed", n)
 		}
+		// Revoked sessions past their expiry no longer need remembering.
+		s.mu.Lock()
+		rv := map[string]time.Time{}
+		for k, v := range s.revoked {
+			if v.After(s.now()) {
+				rv[k] = v
+			}
+		}
+		if len(rv) != len(s.revoked) {
+			if err := s.store.SetRevokedSessions(s.base, rv, s.now()); err == nil {
+				s.revoked = rv
+			} else if s.base.Err() == nil {
+				s.log.Error("prune revoked sessions", "err", err)
+			}
+		}
+		s.mu.Unlock()
 		select {
 		case <-t.C:
 		case <-s.base.Done():
@@ -361,7 +383,14 @@ func (s *Server) sessionID(r *http.Request) ([]byte, bool) {
 	s.mu.RLock()
 	secret := s.secret
 	s.mu.RUnlock()
-	return verifySession(secret, c.Value, s.now())
+	id, ok := verifySession(secret, c.Value, s.now())
+	if !ok {
+		return nil, false
+	}
+	s.mu.RLock()
+	_, gone := s.revoked[hex.EncodeToString(id)]
+	s.mu.RUnlock()
+	return id, !gone
 }
 
 func (s *Server) authed(r *http.Request) bool {
@@ -431,13 +460,32 @@ func (s *Server) requireAuth(h http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && !s.checkCSRF(r) {
-			http.Error(w, "missing or stale CSRF token, reload the page", http.StatusForbidden)
-			return
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			// Before the CSRF check, which is what parses the body.
+			r.Body = http.MaxBytesReader(w, r.Body, maxAuthedBody)
+			// A form post carries its token in the body, so the body is
+			// read here. HTMX sends it as a header and the handler reads
+			// the body itself, under any lower cap it sets.
+			if r.Header.Get(csrfHeader) == "" {
+				var tooBig *http.MaxBytesError
+				if err := r.ParseForm(); errors.As(err, &tooBig) {
+					http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+					return
+				}
+			}
+			if !s.checkCSRF(r) {
+				http.Error(w, "missing or stale CSRF token, reload the page", http.StatusForbidden)
+				return
+			}
 		}
 		h(w, r)
 	}
 }
+
+// maxAuthedBody caps every logged-in post. The biggest legitimate one is a
+// compose file and its .env, a few hundred KiB at most. Without a cap, Go
+// spools a multipart body of any size to temporary files.
+const maxAuthedBody = 16 << 20
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
@@ -454,7 +502,8 @@ func clearCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 }
 
-// rotateSecret replaces the session secret, which ends every session.
+// rotateSecret replaces the session secret, which ends every session,
+// open websockets included.
 func (s *Server) rotateSecret(ctx context.Context) error {
 	secret := randomBytes(32)
 	if err := s.store.Set(ctx, store.KeySessionSecret, hex.EncodeToString(secret)); err != nil {
@@ -462,7 +511,44 @@ func (s *Server) rotateSecret(ctx context.Context) error {
 	}
 	s.mu.Lock()
 	s.secret = secret
+	s.revoked = map[string]time.Time{}
 	s.mu.Unlock()
+	// No cookie signed with the old secret verifies any more, so the
+	// revoked list has nothing left to stop.
+	if err := s.store.SetRevokedSessions(ctx, nil, s.now()); err != nil {
+		s.log.Warn("clear revoked sessions", "err", err)
+	}
+	s.closeSockets(func(liveSocket) bool { return true })
+	return nil
+}
+
+// revokeSession ends one session: a copy of its cookie stops working, and
+// its open websockets close.
+func (s *Server) revokeSession(ctx context.Context, r *http.Request) error {
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		return nil
+	}
+	id, ok := s.sessionID(r)
+	if !ok {
+		return nil
+	}
+	key, exp := hex.EncodeToString(id), sessionExpires(c.Value)
+	s.mu.Lock()
+	next := make(map[string]time.Time, len(s.revoked)+1)
+	for k, v := range s.revoked {
+		next[k] = v
+	}
+	next[key] = exp
+	err = s.store.SetRevokedSessions(ctx, next, s.now())
+	if err == nil {
+		s.revoked = next
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	s.closeSockets(func(ls liveSocket) bool { return ls.session == key })
 	return nil
 }
 

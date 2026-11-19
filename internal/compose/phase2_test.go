@@ -88,7 +88,7 @@ func TestBindSourcesAndCreated(t *testing.T) {
 func TestWriteMetaRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	m := &Meta{Project: "copyparty", Engine: "docker", Created: time.Date(2026, 10, 4, 15, 20, 0, 0, time.UTC)}
-	if err := WriteMeta(dir, m, Owner{}); err != nil {
+	if _, err := WriteMeta(dir, m, Owner{}); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(filepath.Join(dir, MetaFile))
@@ -98,7 +98,7 @@ func TestWriteMetaRoundTrip(t *testing.T) {
 	dep := m.Created.Add(time.Minute)
 	m.Deployed = &dep
 	m.CreatedPaths = []string{"/opt/copyparty/hists"}
-	if err := WriteMeta(dir, m, Owner{}); err != nil {
+	if _, err := WriteMeta(dir, m, Owner{}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ReadMeta(dir)
@@ -108,7 +108,7 @@ func TestWriteMetaRoundTrip(t *testing.T) {
 	if got.Deployed == nil || !got.Deployed.Equal(*m.Deployed) || !slices.Equal(got.CreatedPaths, m.CreatedPaths) {
 		t.Errorf("got %+v", got)
 	}
-	if err := WriteMeta(dir, &Meta{Project: "Bad"}, Owner{}); err == nil {
+	if _, err := WriteMeta(dir, &Meta{Project: "Bad"}, Owner{}); err == nil {
 		t.Error("wrote metadata with an invalid project")
 	}
 }

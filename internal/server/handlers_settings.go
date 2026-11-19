@@ -221,20 +221,28 @@ func (s *Server) passwordSave(w http.ResponseWriter, r *http.Request) {
 		s.render(w, status, "settings", p)
 	}
 	ip := s.limiterKey(r)
-	if ok, retry := s.limiter.Allowed(ip); !ok {
-		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many wrong passwords. Try again in %s.", retry.Round(time.Minute)))
+	if ok, retry := s.limiter.Take(ip); !ok {
+		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many wrong passwords. Try again in %s.", waitText(retry)))
 		return
 	}
 	hash, _, err := s.store.Get(ctx, store.KeyPasswordHash)
 	if err != nil {
+		s.limiter.Done(ip, auth.Abandoned)
 		fail(http.StatusInternalServerError, err.Error())
 		return
 	}
-	if ok, err := auth.VerifyPassword(hash, r.PostFormValue("current")); err != nil || !ok {
-		s.limiter.Fail(ip)
+	ok, err := auth.VerifyPasswordContext(ctx, hash, r.PostFormValue("current"))
+	if status, msg, busy := busyErr(err); busy {
+		s.limiter.Done(ip, auth.Abandoned)
+		fail(status, msg)
+		return
+	}
+	if err != nil || !ok {
+		s.limiter.Done(ip, auth.Failure)
 		fail(http.StatusUnauthorized, "The current password is wrong.")
 		return
 	}
+	s.limiter.Done(ip, auth.Success)
 	pw := r.PostFormValue("password")
 	if err := auth.CheckPasswordPolicy(pw); err != nil {
 		fail(http.StatusBadRequest, err.Error())
@@ -258,7 +266,6 @@ func (s *Server) passwordSave(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.limiter.Reset(ip)
 	s.setSessionCookie(w, r)
 	s.log.Info("password changed")
 	http.Redirect(w, r, "/settings?saved=password", http.StatusSeeOther)

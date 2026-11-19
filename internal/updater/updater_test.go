@@ -40,7 +40,7 @@ func setup(t *testing.T, health string) *fixture {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(fx.dir, "compose.yaml"), []byte("services:\n  fleetling:\n    build: https://github.com/NullAngst/Fleetling.git#main\n    image: fleetling:local\n"), 0o644)
-	if err := compose.WriteMeta(fx.dir, &compose.Meta{Project: "fleetling", Engine: compose.EngineDocker}, compose.Owner{}); err != nil {
+	if _, err := compose.WriteMeta(fx.dir, &compose.Meta{Project: "fleetling", Engine: compose.EngineDocker}, compose.Owner{}); err != nil {
 		t.Fatal(err)
 	}
 	fx.dockerLog = filepath.Join(tmp, "docker.log")

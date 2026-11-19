@@ -67,17 +67,27 @@ func WriteFileAtomic(path string, data []byte, mode os.FileMode, owner Owner) er
 	return os.Rename(name, path)
 }
 
-// WriteMeta writes <dir>/.fleetling.toml.
-func WriteMeta(dir string, m *Meta, owner Owner) error {
+// EncodeMeta returns the bytes WriteMeta writes for m.
+func EncodeMeta(m *Meta) ([]byte, error) {
 	if err := ValidProject(m.Project); err != nil {
-		return err
+		return nil, err
 	}
 	var buf bytes.Buffer
 	buf.WriteString("# Written by Fleetling. The project name is passed to Compose with -p.\n")
 	if err := toml.NewEncoder(&buf).Encode(m); err != nil {
-		return err
+		return nil, err
 	}
-	return WriteFileAtomic(filepath.Join(dir, MetaFile), buf.Bytes(), 0o644, owner)
+	return buf.Bytes(), nil
+}
+
+// WriteMeta writes <dir>/.fleetling.toml and returns the bytes it wrote,
+// which is what the stack's approved snapshot records for it.
+func WriteMeta(dir string, m *Meta, owner Owner) ([]byte, error) {
+	b, err := EncodeMeta(m)
+	if err != nil {
+		return nil, err
+	}
+	return b, WriteFileAtomic(filepath.Join(dir, MetaFile), b, 0o644, owner)
 }
 
 // FolderBindMounts finds volumes in a compose file whose host side is the

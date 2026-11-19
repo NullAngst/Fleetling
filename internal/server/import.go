@@ -507,9 +507,9 @@ func (s *Server) importApply(w http.ResponseWriter, r *http.Request) {
 	var results []importResult
 	for _, j := range jobs {
 		dir := filepath.Join(st.Root, j.folder)
-		err := s.writeImport(dir, j.c, j.text, j.env)
+		wrote, err := s.writeImport(dir, j.c, j.text, j.env)
 		if err == nil {
-			err = s.recordBaseline(ctx, dir, "import")
+			err = s.recordWrites(ctx, dir, "import", wrote)
 		}
 		what := "fleetling: import Portainer stack " + j.c.Name + " into " + dir
 		if j.applied {
@@ -558,34 +558,17 @@ func (s *Server) importApply(w http.ResponseWriter, r *http.Request) {
 }
 
 // writeImport writes one stack: compose.yaml exactly as returned (or with
-// approved fixes), the env vars at mode 600, and .fleetling.toml.
-func (s *Server) writeImport(dir string, c *importCandidate, text string, env []portainer.Pair) error {
-	var owner compose.Owner
-	if _, err := os.Stat(dir); err == nil {
-		owner = compose.OwnerOf(dir)
-	} else if err := os.Mkdir(dir, 0o755); err != nil {
-		return err
-	}
-	if err := compose.WriteFileAtomic(filepath.Join(dir, "compose.yaml"), []byte(text), 0o644, owner); err != nil {
-		return err
-	}
+// approved fixes), the env vars at mode 600, and .fleetling.toml. It
+// returns what it wrote, by file name, for the approved snapshot.
+//
+// Everything that could refuse the import is checked before the first
+// write. A folder left with a compose file but no .fleetling.toml would
+// count as a stack, and the next try would refuse to touch it.
+func (s *Server) writeImport(dir string, c *importCandidate, text string, env []portainer.Pair) (map[string][]byte, error) {
 	envText, _ := portainer.EnvText(env)
 	if c.StackEnv {
-		// Compose only reads .env for interpolation; env_file: stack.env
-		// reads stack.env. One file, two names.
-		if err := compose.WriteFileAtomic(filepath.Join(dir, "stack.env"), []byte(envText), 0o600, owner); err != nil {
-			return err
-		}
-		link := filepath.Join(dir, ".env")
-		if _, err := os.Lstat(link); err == nil {
-			return errors.New(".env already exists; left it alone, stack.env written next to it")
-		}
-		if err := os.Symlink("stack.env", link); err != nil {
-			return err
-		}
-	} else if envText != "" {
-		if err := compose.WriteFileAtomic(filepath.Join(dir, ".env"), []byte(envText), 0o600, owner); err != nil {
-			return err
+		if _, err := os.Lstat(filepath.Join(dir, ".env")); err == nil {
+			return nil, errors.New(".env already exists in the folder; move it aside and import again")
 		}
 	}
 	now := time.Now().UTC().Truncate(time.Second)
@@ -593,7 +576,43 @@ func (s *Server) writeImport(dir string, c *importCandidate, text string, env []
 	if c.Containers > 0 {
 		m.Deployed = &now // already deployed under Portainer; nothing to track
 	}
-	return compose.WriteMeta(dir, m, owner)
+	if _, err := compose.EncodeMeta(m); err != nil {
+		return nil, err
+	}
+
+	var owner compose.Owner
+	if _, err := os.Stat(dir); err == nil {
+		owner = compose.OwnerOf(dir)
+	} else if err := os.Mkdir(dir, 0o755); err != nil {
+		return nil, err
+	}
+	wrote := map[string][]byte{"compose.yaml": []byte(text)}
+	if err := compose.WriteFileAtomic(filepath.Join(dir, "compose.yaml"), wrote["compose.yaml"], 0o644, owner); err != nil {
+		return nil, err
+	}
+	if c.StackEnv {
+		// Compose only reads .env for interpolation; env_file: stack.env
+		// reads stack.env. One file, two names.
+		wrote["stack.env"] = []byte(envText)
+		wrote[".env"] = wrote["stack.env"]
+		if err := compose.WriteFileAtomic(filepath.Join(dir, "stack.env"), wrote["stack.env"], 0o600, owner); err != nil {
+			return nil, err
+		}
+		if err := os.Symlink("stack.env", filepath.Join(dir, ".env")); err != nil {
+			return nil, err
+		}
+	} else if envText != "" {
+		wrote[".env"] = []byte(envText)
+		if err := compose.WriteFileAtomic(filepath.Join(dir, ".env"), wrote[".env"], 0o600, owner); err != nil {
+			return nil, err
+		}
+	}
+	b, err := compose.WriteMeta(dir, m, owner)
+	if err != nil {
+		return nil, err
+	}
+	wrote[compose.MetaFile] = b
+	return wrote, nil
 }
 
 // importRetire stops and removes the Portainer container, and nothing else.

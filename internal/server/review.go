@@ -19,6 +19,12 @@ import (
 // action is refused and the stack is flagged until the user reviews the
 // changes. The scheduled auto-update uses the same check
 // and skips a flagged stack instead of deploying it.
+//
+// The check runs when an action is asked for and again before every step
+// of the job, since a pull or a build can take minutes and a container can
+// rewrite its own folder in that time. When Fleetling writes a file it
+// records only that file, from the bytes it wrote (recordWrites), so a
+// change something else made in the meantime stays flagged.
 
 // Review states.
 const (
@@ -70,18 +76,66 @@ func (s *Server) reviewFor(ctx context.Context, f compose.Folder) (reviewState, 
 	return rs, nil
 }
 
-// recordBaseline takes the folder's current files as approved. Called right
-// after Fleetling writes them itself, and when the user approves a review.
-func (s *Server) recordBaseline(ctx context.Context, dir, source string) error {
+// recordBaseline takes the folder's current files, all of them, as
+// approved, except the ones in wrote, which are recorded from the bytes
+// Fleetling wrote. Only for the moment the user vouches for the whole
+// folder: Manage. Anywhere Fleetling has just written files into a stack
+// it already tracks, use recordWrites, which approves only what Fleetling
+// wrote.
+func (s *Server) recordBaseline(ctx context.Context, dir, source string, wrote map[string][]byte) error {
+	return s.record(ctx, dir, source, wrote, false)
+}
+
+// recordWrites updates a stack's approved snapshot after Fleetling wrote
+// files into its folder. wrote maps each file, named the way the snapshot
+// names it (relative to the stack folder), to the exact bytes Fleetling
+// wrote.
+//
+// Those files are recorded from the bytes, never read back from disk, so
+// a container that rewrites one a moment after Fleetling did still shows
+// up as drift. Every other file keeps the state it was last approved in:
+// re-reading the whole folder here would quietly approve anything that
+// changed while a job ran, which is exactly what drift review is for. A
+// file the old record never had, like an env_file a freshly saved compose
+// file names for the first time, is recorded as it is now.
+func (s *Server) recordWrites(ctx context.Context, dir, source string, wrote map[string][]byte) error {
+	return s.record(ctx, dir, source, wrote, true)
+}
+
+func (s *Server) record(ctx context.Context, dir, source string, wrote map[string][]byte, keepApproved bool) error {
 	f, ok := compose.ReadFolder(dir)
 	if !ok {
 		return fmt.Errorf("%s is not a stack folder", dir)
 	}
-	snap, err := compose.TakeSnapshot(f)
+	cur, err := compose.TakeSnapshot(f)
 	if err != nil {
 		return err
 	}
-	return s.saveSnapshot(ctx, f.Name, source, snap)
+	approved := map[string]compose.FileState{}
+	if keepApproved {
+		b, ok, err := s.store.GetBaseline(ctx, f.Name)
+		if err != nil {
+			return err
+		}
+		if ok {
+			var old compose.Snapshot
+			if json.Unmarshal([]byte(b.Snapshot), &old) == nil {
+				for _, fs := range old.Files {
+					approved[fs.Path] = fs
+				}
+			}
+		}
+	}
+	for i, fs := range cur.Files {
+		if data, ok := wrote[fs.Path]; ok {
+			st := compose.StateOf(data)
+			st.Path = fs.Path
+			cur.Files[i] = st
+		} else if old, ok := approved[fs.Path]; ok {
+			cur.Files[i] = old
+		}
+	}
+	return s.saveSnapshot(ctx, f.Name, source, cur)
 }
 
 func (s *Server) saveSnapshot(ctx context.Context, folder, source string, snap compose.Snapshot) error {
@@ -102,6 +156,22 @@ func (s *Server) reviewedOrErr(ctx context.Context, f compose.Folder) error {
 		return errNeedsReview
 	}
 	return nil
+}
+
+// driftGuard is the JobSpec.Guard for a stack job: the folder is read
+// again, since a new compose file name changes what Compose loads, and has
+// to pass review the same way it did when the job was asked for.
+func (s *Server) driftGuard(f compose.Folder) func(context.Context) error {
+	return func(ctx context.Context) error {
+		cur, ok := compose.ReadFolder(f.Dir)
+		if !ok || cur.Meta == nil {
+			return fmt.Errorf("%s is no longer a managed stack folder", f.Dir)
+		}
+		if cur.ComposeFile != f.ComposeFile {
+			return fmt.Errorf("the compose file is now %s, not %s; %w", cur.ComposeFile, f.ComposeFile, errNeedsReview)
+		}
+		return s.reviewedOrErr(ctx, cur)
+	}
 }
 
 type fileReview struct {

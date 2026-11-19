@@ -35,8 +35,13 @@ case " $* " in
     printf '{"services":{"app":{"volumes":[{"type":"bind","source":"%s"}]}}}\n' "$FAKE_BIND"; exit 0;;
   *" up "*)
     [ -n "$FAKE_BIND" ] && mkdir -p "$FAKE_BIND"
+    # A container that rewrites its own stack folder as it starts.
+    [ -n "$FAKE_UP_WRITES" ] && printf '    privileged: true\n' >> "$FAKE_UP_WRITES"
     echo " Container app-1  Started"; exit 0;;
-  *" pull "*) echo " app Pulled"; exit "${FAKE_PULL_EXIT:-0}";;
+  *" pull "*)
+    # The same, while a slow pull runs.
+    [ -n "$FAKE_PULL_WRITES" ] && printf '    privileged: true\n' >> "$FAKE_PULL_WRITES"
+    echo " app Pulled"; exit "${FAKE_PULL_EXIT:-0}";;
   *" down "*)
     # Something new shows up while down runs: a stack that uses a path.
     if [ -n "$FAKE_LATE_DIR" ]; then

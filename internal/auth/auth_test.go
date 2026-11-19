@@ -75,32 +75,38 @@ func TestPasswordPolicy(t *testing.T) {
 	}
 }
 
+// fail runs one whole wrong try and reports whether it was let through and
+// whether it started a lockout.
+func fail(l *Limiter, key string) (allowed, locked bool) {
+	if ok, _ := l.Take(key); !ok {
+		return false, false
+	}
+	return true, l.Done(key, Failure)
+}
+
 func TestLimiterLocksAfterFiveFailures(t *testing.T) {
 	now := time.Unix(1_000_000, 0)
 	l := NewLimiter(5, 15*time.Minute, 15*time.Minute)
 	l.now = func() time.Time { return now }
 
 	for i := range 4 {
-		if l.Fail("10.0.0.5") {
-			t.Fatalf("locked after %d failures", i+1)
+		if ok, locked := fail(l, "10.0.0.5"); !ok || locked {
+			t.Fatalf("try %d: allowed %v, locked %v", i+1, ok, locked)
 		}
 		now = now.Add(time.Minute)
 	}
-	if ok, _ := l.Allowed("10.0.0.5"); !ok {
-		t.Fatal("locked before the fifth failure")
+	if ok, locked := fail(l, "10.0.0.5"); !ok || !locked {
+		t.Fatalf("fifth failure: allowed %v, locked %v", ok, locked)
 	}
-	if !l.Fail("10.0.0.5") {
-		t.Fatal("fifth failure did not lock")
-	}
-	ok, retry := l.Allowed("10.0.0.5")
+	ok, retry := l.Take("10.0.0.5")
 	if ok || retry != 15*time.Minute {
-		t.Fatalf("Allowed = %v %v, want false 15m", ok, retry)
+		t.Fatalf("Take = %v %v, want false 15m", ok, retry)
 	}
-	if ok, _ := l.Allowed("10.0.0.6"); !ok {
-		t.Fatal("another IP got locked out")
+	if ok, _ := l.Take("10.0.0.6"); !ok {
+		t.Fatal("another address got locked out")
 	}
 	now = now.Add(15 * time.Minute)
-	if ok, _ := l.Allowed("10.0.0.5"); !ok {
+	if ok, _ := l.Take("10.0.0.5"); !ok {
 		t.Fatal("still locked after the lockout ended")
 	}
 }
@@ -111,19 +117,46 @@ func TestLimiterWindowSlides(t *testing.T) {
 	l.now = func() time.Time { return now }
 	// Four failures, then wait out the window. The old ones should not count.
 	for range 4 {
-		l.Fail("ip")
+		fail(l, "ip")
 	}
 	now = now.Add(16 * time.Minute)
-	if l.Fail("ip") {
+	if _, locked := fail(l, "ip"); locked {
 		t.Fatal("failures outside the window still counted")
 	}
 }
 
-func TestLimiterReset(t *testing.T) {
+func TestLimiterSuccessClears(t *testing.T) {
 	l := NewLimiter(2, time.Hour, time.Hour)
-	l.Fail("ip")
-	l.Reset("ip")
-	if l.Fail("ip") {
-		t.Fatal("reset did not clear earlier failures")
+	fail(l, "ip")
+	l.Take("ip")
+	l.Done("ip", Success)
+	if _, locked := fail(l, "ip"); locked {
+		t.Fatal("a right password did not clear earlier failures")
+	}
+}
+
+// Tries are counted when they start. A burst of parallel logins gets no
+// more tries through than the limit, however slow each check is.
+func TestLimiterCountsTriesInFlight(t *testing.T) {
+	l := NewLimiter(5, 15*time.Minute, 15*time.Minute)
+	let := 0
+	for range 1000 {
+		if ok, _ := l.Take("burst"); ok {
+			let++
+		}
+	}
+	if let != 5 {
+		t.Fatalf("%d tries let through at once, want 5", let)
+	}
+	// A try that never checked anything gives its place back.
+	l.Done("burst", Abandoned)
+	if ok, _ := l.Take("burst"); !ok {
+		t.Fatal("an abandoned try kept its place")
+	}
+	for range 5 {
+		l.Done("burst", Failure)
+	}
+	if ok, _ := l.Take("burst"); ok {
+		t.Fatal("not locked after five failures")
 	}
 }

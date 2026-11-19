@@ -56,7 +56,7 @@ func newRemoveYard(t *testing.T) *removeYard {
 	writeFile(t, y.path("app/conf/app.ini"), "a=1")
 	writeFile(t, y.path("shared/z"), "z")
 	writeFile(t, y.path("media/movie"), "m")
-	if err := compose.WriteMeta(y.dir, &compose.Meta{Project: "app", Engine: "docker", Deployed: ptr(time.Now()),
+	if _, err := compose.WriteMeta(y.dir, &compose.Meta{Project: "app", Engine: "docker", Deployed: ptr(time.Now()),
 		CreatedPaths: []string{y.path("app-data"), y.path("app/cache")}}, compose.Owner{}); err != nil {
 		t.Fatal(err)
 	}

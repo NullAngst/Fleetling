@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -39,18 +40,19 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := s.limiterKey(r)
-	if ok, retry := s.limiter.Allowed(ip); !ok {
-		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many wrong setup tokens. Try again in %s.", retry.Round(time.Minute)))
+	if ok, retry := s.limiter.Take(ip); !ok {
+		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many wrong setup tokens. Try again in %s.", waitText(retry)))
 		return
 	}
 	s.mu.RLock()
 	token := s.setupToken
 	s.mu.RUnlock()
 	if !constantEqual(strings.TrimSpace(r.PostFormValue("token")), token) {
-		s.limiter.Fail(ip)
+		s.limiter.Done(ip, auth.Failure)
 		fail(http.StatusUnauthorized, "Wrong setup token. It is printed in the container log: docker logs fleetling")
 		return
 	}
+	s.limiter.Done(ip, auth.Success)
 
 	pw := r.PostFormValue("password")
 	if err := auth.CheckPasswordPolicy(pw); err != nil {
@@ -99,7 +101,6 @@ func (s *Server) setupSubmit(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.limiter.Reset(ip)
 	if warning != "" {
 		s.log.Warn("setup", "root", root, "warning", warning)
 	}
@@ -137,35 +138,47 @@ func (s *Server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := s.limiterKey(r)
-	if ok, retry := s.limiter.Allowed(ip); !ok {
-		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many failed logins from %s. Try again in %s.", ip, retry.Round(time.Minute)))
+	// The try is counted before the slow check, so parallel requests
+	// can't all slip past the limit together.
+	if ok, retry := s.limiter.Take(ip); !ok {
+		fail(http.StatusTooManyRequests, fmt.Sprintf("Too many failed logins from %s. Try again in %s.", ip, waitText(retry)))
 		return
 	}
 	hash, _, err := s.store.Get(r.Context(), store.KeyPasswordHash)
 	if err != nil {
+		s.limiter.Done(ip, auth.Abandoned)
 		fail(http.StatusInternalServerError, err.Error())
 		return
 	}
-	ok, err := auth.VerifyPassword(hash, r.PostFormValue("password"))
+	ok, err := auth.VerifyPasswordContext(r.Context(), hash, r.PostFormValue("password"))
 	if err != nil {
+		s.limiter.Done(ip, auth.Abandoned)
+		if status, msg, busy := busyErr(err); busy {
+			fail(status, msg)
+			return
+		}
 		s.log.Error("stored password hash is unreadable", "err", err)
 		fail(http.StatusInternalServerError, "The stored password hash is unreadable.")
 		return
 	}
 	if !ok {
-		if s.limiter.Fail(ip) {
+		if s.limiter.Done(ip, auth.Failure) {
 			s.log.Warn("login lockout", "ip", ip)
 		}
 		fail(http.StatusUnauthorized, "Wrong password.")
 		return
 	}
-	s.limiter.Reset(ip)
+	s.limiter.Done(ip, auth.Success)
 	clearCookie(w, preauthCookie)
 	s.setSessionCookie(w, r)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if err := s.revokeSession(r.Context(), r); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	clearCookie(w, sessionCookie)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -178,4 +191,24 @@ func (s *Server) logoutAll(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("session secret rotated, every session logged out")
 	clearCookie(w, sessionCookie)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+// busyErr turns an error from a password check that never ran into the
+// response to send: the argon2 queue was full, or the browser went away.
+func busyErr(err error) (status int, msg string, ok bool) {
+	switch {
+	case errors.Is(err, auth.ErrBusy):
+		return http.StatusServiceUnavailable, "The server is busy checking other logins. Try again in a moment.", true
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return http.StatusServiceUnavailable, "The request was cancelled before the password was checked.", true
+	}
+	return 0, "", false
+}
+
+// waitText is a lockout wait for people: whole minutes, never "0s".
+func waitText(d time.Duration) string {
+	if d < time.Minute {
+		return "a minute"
+	}
+	return d.Round(time.Minute).String()
 }
