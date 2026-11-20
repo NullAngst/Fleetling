@@ -18,13 +18,12 @@ WORKDIR /src
 ENV CGO_ENABLED=0
 COPY . .
 COPY --from=assets /src/web/static/dist ./web/static/dist
-ARG VERSION=dev
 # go.sum is committed by the deps workflow. If it is missing, go mod tidy
 # writes it here and checks every module against sum.golang.org.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     if [ ! -f go.sum ]; then go mod tidy; fi && \
-    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/fleetling ./cmd/fleetling
+    go build -trimpath -ldflags "-s -w" -o /out/fleetling ./cmd/fleetling
 
 # kompose: `go install github.com/kubernetes/kompose@latest` doesn't work,
 # because kompose's go.mod has replace directives, which go install refuses.

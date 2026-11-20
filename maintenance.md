@@ -65,10 +65,12 @@ To make a new one:
 
 Once the deps PR is merged, the server needs the new code.
 
-1. Open Fleetling, then Stacks, then Fleetling's own stack.
-2. Click Update. The confirm shows the exact `docker run` command for the helper.
+1. Open Fleetling, then Updates. The Fleetling box at the top says whether `main` has something newer than what's running: a new version, or commits since this image was built (the deps PR you just merged counts).
+2. Click Update Fleetling. The confirm shows the exact `docker run` command for the helper. No button? The box says why; on a fresh install it's that Fleetling's own folder isn't managed yet, so open it and click Manage first.
 3. The page says "Updating, reconnecting" and opens the update log when the new version answers. A build from the repo takes a few minutes.
 4. Read the log. It ends in `done` when it worked. If it says `rolling back` and `FAILED: rolled back to the previous images`, the new build didn't come up healthy and the old one is running again. The lines above say why.
+4.5. If the page stops with "Failed before anything changed", the build or pull itself failed and the running Fleetling was never touched. The log above it says why: usually a registry or GitHub that didn't answer. Try again later.
+5. Open About and check the version is the one you expected.
 
 If the Update button is broken, from the server instead:
 
@@ -130,10 +132,11 @@ The helper rolls back on its own when the new version doesn't come up healthy. I
 
 ## 10. Making a release, when you want one
 
+0. Open About in Fleetling and note "Next release", or run `fleetling version --next`. Versions go 1.0.0, 1.1.0, ... 1.9.0, then 2.0.0. Put that number in the `VERSION` file, upload it to `main`, and wait for its checks to go green.
 1. Open Releases, click Draft a new release.
-2. Under Choose a tag, type a new tag like `v1.2.0` and click Create new tag. Write the notes, then click Publish release.
+2. Under Choose a tag, type `v` plus that number, like `v1.2.0`, and click Create new tag. Write the notes, then click Publish release.
 3. Open Actions, click build on the left, then Run workflow.
 4. Under Use workflow from, open Tags and pick that tag. Click the green Run workflow button.
-5. When the run is green, the release has `fleetling-linux-amd64`, `fleetling-linux-arm64` and `SHA256SUMS` attached. A red release-build job says why in its first step: a branch was picked instead of the tag, or the release doesn't exist yet.
+5. When the run is green, the release has `fleetling-linux-amd64`, `fleetling-linux-arm64` and `SHA256SUMS` attached. A red release-build job says why: a branch was picked instead of the tag, the release doesn't exist yet, or the tag doesn't match `VERSION`. For that last one, fix whichever is wrong and run it again.
 
 Now Fleetling is checked, updated and backed up, and you know what changed since last month.

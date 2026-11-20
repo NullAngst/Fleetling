@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>Update all stacks</h1>
+<p>Each stack pulls its images, then runs <span class="mono">up -d</span> only if one changed. Fleetling's own stack isn't in this list; update it from the top of the Updates page.</p>
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Stack</th><th>Result</th></tr></thead>
+  <tbody>
+  {{range .Data}}
+    <tr>
+      <td data-label="Stack" class="mono"><a href="/stacks/{{.Folder}}?tab=updates">{{.Folder}}</a></td>
+      <td data-label="Result">{{if .Job}}<a href="/stacks/{{.Folder}}?tab=updates&job={{.Job}}">running</a>: {{.Note}}{{else if .Err}}<span class="flag flag-bad">failed</span> <span class="mono small">{{.Note}}</span>{{else}}<span class="flag">skipped</span> <span class="muted small">{{.Note}}</span>{{end}}</td>
+    </tr>
+  {{else}}<tr class="empty"><td colspan="2">No managed stacks.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+<p><a href="/updates">Back to Updates</a></p>
+{{end}}

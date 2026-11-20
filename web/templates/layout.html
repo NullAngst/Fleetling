@@ -26,9 +26,11 @@
     <li><a href="/volumes" {{if eq .Active "volumes"}}aria-current="page"{{end}}>{{template "i-volumes"}}<span>Volumes</span></a></li>
     <li><a href="/builds" {{if eq .Active "builds"}}aria-current="page"{{end}}>{{template "i-build"}}<span>Builds</span></a></li>
     <li><a href="/convert" {{if eq .Active "convert"}}aria-current="page"{{end}}>{{template "i-convert"}}<span>Converter</span></a></li>
+    <li><a href="/updates" {{if eq .Active "updates"}}aria-current="page"{{end}}>{{template "i-updates"}}<span>Updates</span>{{if .Badge}}<span class="nav-badge" title="A newer Fleetling is on GitHub">new</span>{{end}}</a></li>
     <li class="nav-gap"><a href="/import" {{if eq .Active "import"}}aria-current="page"{{end}}>{{template "i-import"}}<span>Import</span></a></li>
     <li><a href="/actions" {{if eq .Active "actions"}}aria-current="page"{{end}}>{{template "i-log"}}<span>Action log</span></a></li>
     <li><a href="/settings" {{if eq .Active "settings"}}aria-current="page"{{end}}>{{template "i-settings"}}<span>Settings</span></a></li>
+    <li><a href="/about" {{if eq .Active "about"}}aria-current="page"{{end}}>{{template "i-about"}}<span>About</span></a></li>
   </ul>
   <div class="sidebar-foot">
     <button type="button" class="side-btn" data-theme-toggle title="Switch between light and dark">{{template "i-theme"}}<span>Theme</span></button>
@@ -36,14 +38,14 @@
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button type="submit" class="side-btn">{{template "i-logout"}}<span>Log out</span></button>
     </form>
-    <span class="version mono">{{.Version}}</span>
+    <a class="version mono" href="/about" title="About this Fleetling">v{{.Version}}</a>
   </div>
 </nav>
 {{else}}
 <aside class="gate">
   <div class="gate-brand">{{template "mark"}}<span>Fleetling</span></div>
   <p>Compose stacks on this server, run from their own folders with the commands shown before they run.</p>
-  <span class="version mono">{{.Version}}</span>
+  <span class="version mono">v{{.Version}}</span>
 </aside>
 {{end}}
 <main>

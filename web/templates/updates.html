@@ -1,0 +1,92 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>Updates</h1>
+    <p class="subtitle">Fleetling itself, every managed stack, and the containers Fleetling doesn't manage.</p>
+  </div>
+</header>
+
+<h2>Fleetling</h2>
+<div hx-get="/updates/fleetling" hx-trigger="load" hx-swap="outerHTML"><div class="update-box"><p class="muted">{{if $d.Enabled}}Asking GitHub...{{else}}Reading this build...{{end}}</p></div></div>
+
+{{$s := $d.Self}}
+{{if $s.Managed}}
+  {{if $s.Sources}}<p class="muted small">Its compose file: {{range $i, $src := $s.Sources}}{{if $i}}; {{end}}<span class="mono">{{$src}}</span>{{end}}. An update rebuilds or pulls from there, so it brings whatever that points at, the newest commit on <span class="mono">main</span> for the stock compose file.</p>{{end}}
+  {{if $s.Review}}<p class="notice-line">Fleetling's own files changed outside Fleetling. <a href="/stacks/{{$s.Folder}}/review">Review them</a> before it can update itself.</p>
+  {{else if $s.Busy}}<p class="notice-line">An action is running on Fleetling's own stack. Wait for it to finish.</p>
+  {{else if $s.Command}}
+  <form method="post" action="/stacks/{{$s.Folder}}/update-now" class="actions">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary" data-command="{{$s.Command}}" data-title="Update Fleetling now?">{{template "i-update"}}Update Fleetling</button>
+    <a href="/stacks/{{$s.Folder}}?tab=updates">Schedule it</a>
+    {{if not $s.Last.Missing}}<a href="/self/last-update">Last update log{{if $s.Last.Failed}} <span class="flag flag-bad">failed</span>{{end}}</a>{{end}}
+  </form>
+  <p class="muted small">A helper container builds or pulls the new image, starts it, and waits for it to come up healthy. If it doesn't within a minute, the helper puts the previous image back. This page goes away while Fleetling restarts and comes back on its own.{{with $s.Sched}}{{if .Describe}} Scheduled: {{.Describe}}, next run {{.Next}}.{{end}}{{end}}</p>
+  {{else}}<p class="warn">Update isn't available: {{$s.Reason}}</p>{{end}}
+{{else}}
+<p class="notice-line">{{$s.Reason}}{{if $s.Folder}} <a href="/stacks/{{$s.Folder}}">Open {{$s.Folder}}</a>{{end}}</p>
+{{end}}
+
+<form method="post" action="/updates/github" class="actions">
+  <input type="hidden" name="csrf" value="{{.CSRF}}">
+  {{if $d.Enabled}}
+  <input type="hidden" name="check" value="off">
+  <span class="muted small">Fleetling asks GitHub for its newest version at most every 6 hours: three anonymous requests, nothing sent about this server but its address.</span>
+  <button type="submit" class="link small">Stop checking GitHub</button>
+  {{else}}
+  <input type="hidden" name="check" value="on">
+  <span class="muted small">Fleetling doesn't check GitHub for new versions.</span>
+  <button type="submit">Check GitHub for new versions</button>
+  {{end}}
+</form>
+
+<header class="page-head">
+  <h2>Stacks</h2>
+  {{if $d.Stacks}}
+  <form method="post" action="/updates/all" class="actions">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" data-command="pull every managed stack's images and run up -d where one changed ({{len $d.Stacks}} stacks; stopped stacks and stacks needing review are skipped)" data-title="Update all stacks?">{{template "i-update"}}Update all</button>
+  </form>
+  {{end}}
+</header>
+{{if $d.ScanErr}}<div class="msg msg-error">Could not read the stack root: <span class="mono">{{$d.ScanErr}}</span></div>{{end}}
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Stack</th><th>Running</th><th>Images</th><th>Schedule</th><th>Last update</th><th></th></tr></thead>
+  <tbody>
+  {{range $d.Stacks}}
+    <tr>
+      <td data-label="Stack"><a class="mono" href="/stacks/{{.Folder}}?tab=updates">{{.Folder}}</a> <span class="muted small">{{.Engine}}</span></td>
+      <td data-label="Running" class="mono">{{.Running}}/{{.Total}}</td>
+      <td data-label="Images">{{if .Review}}<a class="flag flag-bad" href="/stacks/{{.Folder}}/review">needs review</a>{{else}}<span hx-get="/updates/stack/{{.Folder}}" hx-trigger="load" hx-swap="outerHTML"><span class="muted small">checking...</span></span>{{end}}</td>
+      <td data-label="Schedule">{{if .Sched.Describe}}{{.Sched.Describe}}<div class="muted small">next {{.Sched.Next}}</div>{{else}}<span class="muted">off</span>{{end}}</td>
+      <td data-label="Last update">{{if .Sched.HasLast}}{{.Sched.Last.LastRun.Format "2006-01-02 15:04"}}
+        {{if eq .Sched.Last.LastResult "ok"}}<span class="state"><span class="dot dot-ok"></span>ok</span>{{else if eq .Sched.Last.LastResult "skipped"}}<span class="flag" title="{{.Sched.Last.LastMsg}}">skipped</span>{{else}}<span class="flag flag-bad" title="{{.Sched.Last.LastMsg}}">failed</span>{{end}}
+        {{else}}<span class="muted">never</span>{{end}}</td>
+      <td>{{if and (not .Review) .Sched.Command}}<form method="post" action="/stacks/{{.Folder}}/update-now"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" data-command="{{.Sched.Command}}" data-title="Update {{.Folder}} now?">Update now</button></form>{{end}}</td>
+    </tr>
+  {{else}}<tr class="empty"><td colspan="6">No managed stacks besides Fleetling.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted small">Update now pulls, then runs <span class="mono">up -d</span> only if an image changed, so nothing restarts for no reason. Image checks ask each registry anonymously and are cached for {{$d.TTL}}; private registries show as unknown.</p>
+
+<h2>Other containers</h2>
+<p class="muted">Not in a managed stack, so Fleetling only reports on them. Update them wherever they were started, or bring them into Fleetling: import from Portainer, or put their compose file in a folder under the root and click Manage.</p>
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Container</th><th>Image</th><th>State</th><th>Image update</th></tr></thead>
+  <tbody>
+  {{range $d.Others}}
+    <tr>
+      <td data-label="Container"><a class="mono" href="/containers/{{.Slot}}/{{.ID}}">{{.Name}}</a>{{if .Project}} <span class="muted small">project {{.Project}}</span>{{end}}</td>
+      <td data-label="Image" class="mono path">{{.Image}}</td>
+      <td data-label="State">{{if .Running}}<span class="state"><span class="dot dot-ok"></span>running</span>{{else}}<span class="muted">stopped</span>{{end}}</td>
+      <td data-label="Image update"><button type="button" class="link small" hx-get="/updates/container/{{.Slot}}/{{.ID}}" hx-swap="outerHTML">Check</button></td>
+    </tr>
+  {{else}}<tr class="empty"><td colspan="4">None. Every container belongs to a managed stack.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

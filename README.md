@@ -23,6 +23,8 @@ Every phase of the build plan is built. What works:
 - The Portainer importer, through Portainer's API or straight from its data folder, plus a trial: Portainer is stopped, not removed, until you either go back to it or finish the migration.
 - The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 - Self-management: Update and Restart on Fleetling's own stack, run by a helper container that rolls back to the old image if the new one doesn't come up healthy.
+- An Updates page: whether a newer Fleetling is on GitHub and a button to update it, every managed stack's image checks with Update now and Update all, and the containers Fleetling doesn't manage, read-only.
+- An About page: the version, the build, the process, the configuration, and each engine's host, OS, kernel, CPUs, memory and versions.
 - Podman: the create form suggests the engine from the compose file and says which line made it think so, stacks move between engines, and the endpoint test checks `podman-restart.service`.
 - Builds: a Build button for stacks with `build:`, a standalone builder for a folder or a git URL, and saved recipes.
 - The converter: Podman Quadlet units through podlet and Kubernetes manifests through kompose, with a lint that lists what won't survive the trip.
@@ -178,7 +180,17 @@ Networks need nothing; Portainer created them in Docker, so they already exist. 
 
 ## Updating Fleetling itself
 
-Open Fleetling's own stack and click Update. It needs the folder managed and its files reviewed, like any other stack: an unreviewed change to Fleetling's own compose file blocks its own update.
+Open Updates and click Update Fleetling. The same button is on Fleetling's own stack page. It needs Fleetling's folder managed, so the first time, open that folder on the Stacks page (`fleetling`, for the install compose file) and click Manage. That writes `.fleetling.toml` and restarts nothing. Its files also have to pass review, like any other stack: an unreviewed change to Fleetling's own compose file blocks its own update.
+
+### Is there a new version?
+
+The Updates page tells you. Fleetling asks GitHub three things, at most every 6 hours: the `VERSION` file on `main`, the newest release, and the newest commit on `main`. Those are anonymous requests to `raw.githubusercontent.com` and `api.github.com`, and nothing about your server goes with them but its address. It says an update is available when:
+
+- `main` has a higher version than the one running, or
+- `main` has commits newer than the running image, with the same version. That's usually the weekly dependency update, which doesn't bump the version. The install compose file builds from `main`, so Update brings those in too.
+- or a release is newer than the running version, for anyone building from a tag.
+
+When there's a newer version on `main`, Updates gets a "new" mark in the sidebar. Don't want Fleetling talking to GitHub at all? The Updates page has a switch, and then you check the repository yourself.
 
 Fleetling can't run `docker compose up -d` on itself, since Compose replaces the container halfway through and the process doing the work dies with it. So Update starts a short-lived helper container from Fleetling's own image, with the socket and the root mounted at the same paths:
 
@@ -198,7 +210,7 @@ The confirm shows that exact line. The image is given by ID, not by tag, since t
 
 The tradeoff of the extra tag: one previous image per service stays on disk. "Prune all unused" on the Images page removes it like any other unused image.
 
-Every step goes to `<data>/last-update.log`. The browser shows "Updating, reconnecting", polls `/healthz` until a new process answers, then opens that log. A second helper is refused while `fleetling-updater` exists. Restart goes through the helper too, for the same reason.
+Every step goes to `<data>/last-update.log`. The browser shows "Updating, reconnecting", polls `/healthz` until a new process answers, then opens that log. If the helper fails before it replaces anything (a build error, a registry that won't answer), the old Fleetling keeps running, and the page says so and stops waiting. A second helper is refused while `fleetling-updater` exists. Restart goes through the helper too, for the same reason.
 
 On Fleetling's own stack, Stop, Down and Remove are greyed out with the reason next to each. Use the host for those.
 
@@ -467,12 +479,19 @@ You need Go and Node, latest stable of each.
 
 Skipping step 1 still builds; the pages then load without JavaScript and fall back to your system fonts.
 
+### Versions
+
+The version lives in the `VERSION` file at the top of the repository, and every build carries it: the release binaries and the image the install compose file builds from git. The About page and the sidebar show it.
+
+Each release bumps the middle number: 1.0.0, 1.1.0, 1.2.0 and so on to 1.9.0. After that the first number goes up and the middle one starts over, so 1.9.0 is followed by 2.0.0. The last number is always 0. The tests fail on a `VERSION` that breaks that pattern, and `fleetling version --next` prints what the next one should be. The About page shows it too.
+
 ### Making a release
 
 Static binaries for linux amd64 and arm64, plus a `SHA256SUMS` file, get attached to a release you make yourself:
 
+0. Bump `VERSION` to the next version (About shows it) and upload it to `main`. Wait for that push's checks to go green.
 1. Open Releases, click Draft a new release.
-2. Under Choose a tag, type a new tag like `v1.2.0` and click Create new tag. Fill in the title and notes.
+2. Under Choose a tag, type a new tag matching `VERSION` with a `v` in front, like `v1.2.0`, and click Create new tag. Fill in the title and notes.
 3. Click Publish release.
 4. Open Actions, click build on the left.
 5. Click Run workflow. Under Use workflow from, open Tags and pick the tag you just made.
@@ -480,7 +499,9 @@ Static binaries for linux amd64 and arm64, plus a `SHA256SUMS` file, get attache
 
 The tests, the browser smoke test, both integration jobs and the image build run first, on exactly the code in that tag. If they pass, one job builds the binaries with a read-only token, and a second job, the only one with write access, attaches them to the release. That second job runs GitHub's own artifact download and `gh`, nothing else. Pushing a tag on its own builds nothing.
 
-Two ways it stops on purpose, with the reason in the run: you picked a branch instead of the tag, or there's no release for that tag yet. Running it twice on the same tag replaces the files.
+Three ways it stops on purpose, with the reason in the run: you picked a branch instead of the tag, there's no release for that tag yet, or the tag doesn't match `VERSION`. Running it twice on the same tag replaces the files.
+
+Why bump `VERSION` first? Because the binary takes its version from that file, not from the tag. A tag that disagrees would ship binaries that report the wrong version, so the run refuses.
 
 ### Dependencies
 

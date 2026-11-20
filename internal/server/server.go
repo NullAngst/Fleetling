@@ -22,6 +22,7 @@ import (
 	"github.com/NullAngst/Fleetling/internal/convert"
 	"github.com/NullAngst/Fleetling/internal/engine"
 	"github.com/NullAngst/Fleetling/internal/registry"
+	"github.com/NullAngst/Fleetling/internal/release"
 	"github.com/NullAngst/Fleetling/internal/store"
 	"github.com/NullAngst/Fleetling/web"
 )
@@ -52,6 +53,7 @@ type Engine interface {
 	Kill(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
 	SetRestartPolicy(ctx context.Context, id, name string, max int) error
+	SystemInfo(ctx context.Context) (engine.SystemInfo, error)
 	Logs(ctx context.Context, id string, tty bool, o engine.LogOptions, emit func(stderr bool, line string)) error
 	Stats(ctx context.Context, id string) (engine.Stats, error)
 	Shell(ctx context.Context, id string, cmd []string, user string, cols, rows uint) (*engine.Exec, error)
@@ -98,6 +100,8 @@ type Server struct {
 	imp   importState
 	tools convert.Tools // docker, podlet and kompose for the converter
 	reg   *registry.Checker
+	rel   *release.Checker // GitHub, for Fleetling's own version
+	start time.Time        // when this process started, for the About page
 
 	boot string // random per process; /healthz sends it so the update page sees the new process
 
@@ -136,6 +140,8 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 		runner:      compose.Runner{Docker: cfg.DockerBin},
 		tools:       convert.Tools{Docker: cfg.DockerBin},
 		reg:         registry.NewChecker(),
+		rel:         release.New("Fleetling/" + cfg.Version + " (+https://github.com/" + release.Repo + ")"),
+		start:       time.Now(),
 		jobs:        compose.NewJobs(ctx),
 		base:        ctx,
 		boot:        hex.EncodeToString(randomBytes(8)),
@@ -166,6 +172,7 @@ func New(ctx context.Context, cfg Config, st *store.Store) (*Server, error) {
 	s.listIfaces = s.hostInterfaces
 	s.handler = s.routes()
 	go s.pruneLoop()
+	go s.releaseLoop()
 	if !cfg.NoScheduler {
 		s.reconcileSelfUpdate(ctx)
 		go s.scheduleLoop()
@@ -278,6 +285,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /import/reset", s.requireAuth(s.importReset))
 	mux.HandleFunc("POST /import/retire", s.requireAuth(s.importRetire))
 	mux.HandleFunc("GET /import/trial", s.requireAuth(s.trialPage))
+	mux.HandleFunc("GET /updates", s.requireAuth(s.updatesPage))
+	mux.HandleFunc("GET /updates/fleetling", s.requireAuth(s.updatesFleetling))
+	mux.HandleFunc("GET /updates/stack/{folder}", s.requireAuth(s.updatesStack))
+	mux.HandleFunc("GET /updates/container/{slot}/{id}", s.requireAuth(s.updatesContainer))
+	mux.HandleFunc("POST /updates/check", s.requireAuth(s.updatesCheckNow))
+	mux.HandleFunc("POST /updates/github", s.requireAuth(s.updatesGitHub))
+	mux.HandleFunc("POST /updates/all", s.requireAuth(s.updatesAll))
+	mux.HandleFunc("GET /about", s.requireAuth(s.aboutPage))
 	mux.HandleFunc("POST /import/trial/revert", s.requireAuth(s.trialRevert))
 	mux.HandleFunc("POST /import/trial/finish", s.requireAuth(s.trialFinish))
 	mux.HandleFunc("GET /networks", s.requireAuth(s.networksPage))

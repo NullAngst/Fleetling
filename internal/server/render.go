@@ -21,6 +21,7 @@ type page struct {
 	Editor  bool   // load the CodeMirror bundle
 	Shell   bool   // load the xterm.js bundle
 	Nonce   string // CSP nonce for injected <style> elements
+	Badge   bool   // a newer Fleetling is on GitHub: marks Updates in the sidebar
 	Data    any
 }
 
@@ -119,6 +120,7 @@ func (s *Server) page(r *http.Request, title, active string, data any) page {
 		CSRF:    s.csrfToken(r),
 		Version: s.cfg.Version,
 		Nonce:   nonceFrom(r),
+		Badge:   s.updateBadge(),
 		Data:    data,
 	}
 }

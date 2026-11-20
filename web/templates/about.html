@@ -1,0 +1,81 @@
+{{define "content"}}
+{{$d := .Data}}
+<header class="page-head">
+  <div class="title-block">
+    <h1>About Fleetling</h1>
+    <p class="subtitle">Compose stacks on this server, run from their own folders with the commands shown before they run.</p>
+  </div>
+</header>
+
+<dl class="facts">
+  <div><dt>Version</dt><dd class="mono">v{{$d.Version}}</dd></div>
+  {{if $d.Next}}<div><dt>Next release</dt><dd class="mono">v{{$d.Next}}</dd></div>{{end}}
+  <div><dt>Up for</dt><dd>{{$d.Uptime}}</dd></div>
+  <div><dt>Source</dt><dd><a href="{{$d.Repo}}">{{$d.Repo}}</a></dd></div>
+  <div><dt>License</dt><dd>GPL-3.0</dd></div>
+</dl>
+<p class="muted small">Versions go 1.0.0, 1.1.0 and up to 1.9.0, then 2.0.0: each release bumps the middle number, and after 9 the first one. The version lives in the <span class="mono">VERSION</span> file at the top of the repository. <a href="/updates">Check for updates</a> or read <a href="{{$d.Repo}}/blob/main/changes.md">what changed</a>.</p>
+
+<h2>This build</h2>
+<div class="table-wrap">
+<table class="list kv">
+  <tbody>
+    <tr><th>Go</th><td class="mono">{{$d.GoVersion}}</td></tr>
+    <tr><th>Platform</th><td class="mono">{{$d.Platform}}</td></tr>
+    {{range $d.Build}}<tr><th>{{index . 0}}</th><td class="mono">{{index . 1}}</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>This process</h2>
+<div class="table-wrap">
+<table class="list kv">
+  <tbody>
+    <tr><th>Started</th><td class="mono">{{$d.Started.UTC.Format "2006-01-02 15:04:05"}} UTC</td></tr>
+    <tr><th>PID</th><td class="mono">{{$d.PID}}</td></tr>
+    <tr><th>Goroutines</th><td class="mono">{{$d.Threads}}</td></tr>
+    <tr><th>Memory</th><td class="mono">{{$d.Mem}} in use, {{$d.OSMem}} held from the OS</td></tr>
+    <tr><th>Hostname</th><td class="mono">{{$d.Hostname}}</td></tr>
+    <tr><th>In a container</th><td>{{if $d.InContainer}}yes{{if $d.Container}}, <span class="mono">{{$d.Container}}</span>{{end}}{{else}}no{{end}}</td></tr>
+    {{if $d.Image}}<tr><th>Image</th><td class="mono">{{$d.Image}}{{if not $d.ImageBuilt.IsZero}}<div class="muted small">built {{$d.ImageBuilt.UTC.Format "2006-01-02 15:04"}} UTC</div>{{end}}</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+
+<h2>Configuration</h2>
+<div class="table-wrap">
+<table class="list kv">
+  <tbody>
+    <tr><th>Stack root</th><td class="mono">{{$d.Root}}</td></tr>
+    <tr><th>Data folder</th><td class="mono">{{$d.DataDir}}{{if $d.DBSize}} <span class="muted small">database {{$d.DBSize}}</span>{{end}}</td></tr>
+    <tr><th>This connection</th><td>{{if $d.TLS}}HTTPS{{else}}plain HTTP <span class="muted small">(TLS is off here, or a proxy in front ends it)</span>{{end}}</td></tr>
+    <tr><th>Trusted proxies</th><td class="mono">{{if $d.Proxies}}{{join $d.Proxies ", "}}{{else}}<span class="muted">none</span>{{end}}</td></tr>
+    <tr><th>Extra origins</th><td class="mono">{{if $d.Origins}}{{join $d.Origins ", "}}{{else}}<span class="muted">none</span>{{end}}</td></tr>
+    <tr><th>GitHub version check</th><td>{{if $d.GitHubOff}}off{{else}}on, at most every 6 hours{{end}} <a class="small" href="/updates">change</a></td></tr>
+  </tbody>
+</table>
+</div>
+
+{{range $d.Engines}}
+<h2>{{if eq .Slot "podman"}}Podman{{else}}Docker{{end}} <span class="muted small mono">{{.Host}}</span></h2>
+{{if .Missing}}<p class="muted">No socket there, so this engine isn't in use. Settings turns it off or points it elsewhere.</p>
+{{else if .Err}}<p class="warn">Didn't answer: <span class="mono">{{.Err}}</span></p>{{else}}
+<div class="table-wrap">
+<table class="list kv">
+  <tbody>
+    <tr><th>Host</th><td class="mono">{{.Info.Name}}</td></tr>
+    <tr><th>Operating system</th><td>{{.Info.OS}}</td></tr>
+    <tr><th>Kernel</th><td class="mono">{{.Info.Kernel}}</td></tr>
+    <tr><th>CPU</th><td class="mono">{{.Info.Arch}}, {{.Info.CPUs}} cores</td></tr>
+    <tr><th>Memory</th><td class="mono">{{bytes .Info.Memory}}</td></tr>
+    <tr><th>Engine</th><td class="mono">{{.Info.ServerVersion}}{{if .Info.APIVersion}} <span class="muted small">API {{.Info.APIVersion}}</span>{{end}}</td></tr>
+    <tr><th>Compose</th><td class="mono">{{if .Compose}}{{.Compose}}{{else}}<span class="muted">not found</span>{{end}}</td></tr>
+    <tr><th>Storage</th><td class="mono">{{.Info.StorageDriver}} <span class="muted small">in {{.Info.RootDir}}</span></td></tr>
+    <tr><th>Cgroups</th><td class="mono">{{.Info.CgroupDriver}}{{if .Info.CgroupVersion}}, v{{.Info.CgroupVersion}}{{end}}</td></tr>
+    <tr><th>Containers</th><td class="mono">{{.Info.Running}} running of {{.Info.Containers}}, {{.Info.Images}} images</td></tr>
+  </tbody>
+</table>
+</div>
+{{end}}
+{{end}}
+{{end}}

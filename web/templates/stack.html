@@ -17,7 +17,13 @@
 {{if $d.FolderMounted}}<p class="notice-line">{{join $d.FolderMounted ", "}} mounts the stack folder itself, so the container can read .env and edit the compose file. For new stacks, a subfolder like <span class="mono">{{$d.Folder.Dir}}/cfg</span> avoids that.</p>{{end}}
 
 <div class="toolbar">
-{{if $d.Self}}
+{{if and $d.Self (not $d.Folder.Meta)}}
+  <form method="post" action="/stacks/{{$d.Folder.Name}}/manage">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="primary">{{template "i-manage"}}Manage</button>
+  </form>
+  <span class="muted">This is Fleetling's own folder. Manage it so Fleetling can update and restart itself. Writes {{$d.Folder.Dir}}/.fleetling.toml with project <span class="mono">{{$d.Folder.Project}}</span>; nothing restarts.</span>
+{{else if $d.Self}}
   {{if $d.SelfActions}}
   <div class="seg">
     {{range $d.SelfActions}}

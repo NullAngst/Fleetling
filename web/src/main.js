@@ -279,6 +279,7 @@ for (const box of document.querySelectorAll("[data-self-update]")) {
   const status = box.querySelector("[data-self-status]");
   const logEl = box.querySelector("[data-self-log]");
   const boot = box.dataset.boot;
+  const since = Date.parse(box.dataset.since) || Date.now();
   const started = Date.now();
   const tick = async () => {
     try {
@@ -292,8 +293,22 @@ for (const box of document.querySelectorAll("[data-self-update]")) {
       status.textContent = "The old Fleetling is still answering";
       const l = await fetch("/self/log", { cache: "no-store" });
       if (l.ok) {
-        logEl.textContent = await l.text();
+        const text = await l.text();
+        logEl.textContent = text;
         logEl.scrollTop = logEl.scrollHeight;
+        // A helper that fails before replacing anything leaves the old
+        // Fleetling running, so no new process will ever answer. Stop
+        // there and say so. The log's first line is only this run's once
+        // its time is after this page opened; before that it's the last
+        // run's log.
+        const first = Date.parse(text.slice(0, text.indexOf(" ")));
+        if (first >= since - 5000 && /^\S+ FAILED: /m.test(text)) {
+          status.textContent = "Failed before anything changed. Fleetling is still running the old version.";
+          box.classList.add("is-failed");
+          const done = document.querySelector("[data-self-failed]");
+          if (done) done.hidden = false;
+          return;
+        }
       }
     } catch {
       status.textContent = "Fleetling is restarting, retrying...";

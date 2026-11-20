@@ -41,6 +41,7 @@ type fakeEngine struct {
 	exists     map[string]bool // container names Exists reports
 	project    []engine.ProjectContainer
 	images     map[string]engine.ImageInfo
+	rows       []engine.ContainerRow // what Containers lists
 }
 
 func (f *fakeEngine) Identify(context.Context) (engine.Info, error) { return f.info, f.err }
@@ -61,7 +62,7 @@ func (f *fakeEngine) ContainerMounts(context.Context, string) ([]compose.Mount, 
 func (f *fakeEngine) ContainerLabels(context.Context, string) (map[string]string, error) {
 	return f.labels, f.err
 }
-func (f *fakeEngine) Containers(context.Context) ([]engine.ContainerRow, error) { return nil, f.err }
+func (f *fakeEngine) Containers(context.Context) ([]engine.ContainerRow, error) { return f.rows, f.err }
 func (f *fakeEngine) Volumes(context.Context) ([]engine.VolumeRow, error)       { return nil, f.err }
 func (f *fakeEngine) Close() error                                              { return nil }
 func (f *fakeEngine) Inspect(_ context.Context, id string) (engine.Detail, error) {

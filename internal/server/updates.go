@@ -449,84 +449,81 @@ func (s *Server) updateCheck(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	var rows []imageCheck
-	var problem string
-	func() {
-		// The image names come from the files on disk. Until those are
-		// reviewed, they may name anything, and the check would send
-		// requests wherever they point.
-		if err := s.reviewedOrErr(ctx, f); err != nil {
-			problem = "review this stack's files first; the check reads image names from them"
-			return
-		}
-		t, err := s.target(st, f)
-		if err != nil {
-			problem = err.Error()
-			return
-		}
-		cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		cfg, err := s.runner.ResolvedConfig(cctx, t)
-		if err != nil {
-			problem = err.Error()
-			return
-		}
-		svcs, err := serviceImages(cfg, t.Project)
-		if err != nil {
-			problem = err.Error()
-			return
-		}
-		e, err := s.newEngine(hostFor(st, f.Meta.Engine))
-		if err != nil {
-			problem = err.Error()
-			return
-		}
-		defer e.Close()
-		ctrs, _ := e.ProjectContainers(cctx, t.Project)
-		running := map[string]string{}
-		for _, c := range ctrs {
-			if running[c.Service] == "" {
-				running[c.Service] = c.ImageID
-			}
-		}
-		rows = make([]imageCheck, len(svcs))
-		var wg sync.WaitGroup
-		for i, sv := range svcs {
-			rows[i] = imageCheck{Service: sv[0], Image: sv[1]}
-			wg.Go(func() {
-				row := &rows[i]
-				// What the tag points at locally. With Docker's containerd
-				// image store, the image a container runs is dropped from
-				// the store once its tag moves, so the tag is the one
-				// reliable thing to inspect.
-				info, err := e.ImageInfo(cctx, sv[1])
-				run := running[sv[0]]
-				if err != nil && run != "" {
-					info, err = e.ImageInfo(cctx, run)
-				}
-				if err != nil {
-					row.Status, row.Detail = registry.StatusUnknown, "no local image yet"
-					return
-				}
-				if run != "" && info.ID != run {
-					row.Status, row.Detail = registry.StatusAvailable, "a newer image is already pulled but not running"
-					return
-				}
-				if len(info.RepoDigests) == 0 {
-					row.Status, row.Detail = registry.StatusLocal, "built here, nothing to compare"
-					return
-				}
-				d, err := s.reg.Digest(cctx, sv[1])
-				if err != nil {
-					row.Status, row.Detail = registry.StatusUnknown, shortErr(err)
-					return
-				}
-				row.Status = registry.Compare(sv[1], info.RepoDigests, d)
-			})
-		}
-		wg.Wait()
-	}()
+	rows, problem := s.stackImageChecks(ctx, st, f)
 	s.render(w, http.StatusOK, "partial_updates", map[string]any{"Rows": rows, "Problem": problem, "TTL": fmt.Sprintf("%d hours", int(registry.TTL.Hours()))})
+}
+
+// stackImageChecks checks every service image of one managed stack.
+// problem says why it couldn't, in which case rows is empty.
+func (s *Server) stackImageChecks(ctx context.Context, st store.Settings, f compose.Folder) (rows []imageCheck, problem string) {
+	// The image names come from the files on disk. Until those are
+	// reviewed, they may name anything, and the check would send requests
+	// wherever they point.
+	if err := s.reviewedOrErr(ctx, f); err != nil {
+		return nil, "review this stack's files first; the check reads image names from them"
+	}
+	t, err := s.target(st, f)
+	if err != nil {
+		return nil, err.Error()
+	}
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cfg, err := s.runner.ResolvedConfig(cctx, t)
+	if err != nil {
+		return nil, err.Error()
+	}
+	svcs, err := serviceImages(cfg, t.Project)
+	if err != nil {
+		return nil, err.Error()
+	}
+	e, err := s.newEngine(hostFor(st, f.Meta.Engine))
+	if err != nil {
+		return nil, err.Error()
+	}
+	defer e.Close()
+	ctrs, _ := e.ProjectContainers(cctx, t.Project)
+	running := map[string]string{}
+	for _, c := range ctrs {
+		if running[c.Service] == "" {
+			running[c.Service] = c.ImageID
+		}
+	}
+	rows = make([]imageCheck, len(svcs))
+	var wg sync.WaitGroup
+	for i, sv := range svcs {
+		rows[i] = imageCheck{Service: sv[0], Image: sv[1]}
+		wg.Go(func() {
+			rows[i].Status, rows[i].Detail = s.imageStatus(cctx, e, sv[1], running[sv[0]])
+		})
+	}
+	wg.Wait()
+	return rows, ""
+}
+
+// imageStatus compares one image reference with its registry. run is the
+// image ID a container runs, "" when none does.
+func (s *Server) imageStatus(ctx context.Context, e Engine, ref, run string) (registry.Status, string) {
+	// What the tag points at locally. With Docker's containerd image
+	// store, the image a container runs is dropped from the store once its
+	// tag moves, so the tag is the one reliable thing to inspect.
+	info, err := e.ImageInfo(ctx, ref)
+	if err != nil && run != "" {
+		info, err = e.ImageInfo(ctx, run)
+	}
+	if err != nil {
+		return registry.StatusUnknown, "no local image yet"
+	}
+	if run != "" && info.ID != run {
+		return registry.StatusAvailable, "a newer image is already pulled but not running"
+	}
+	if len(info.RepoDigests) == 0 {
+		return registry.StatusLocal, "built here, nothing to compare"
+	}
+	d, err := s.reg.Digest(ctx, ref)
+	if err != nil {
+		return registry.StatusUnknown, shortErr(err)
+	}
+	return registry.Compare(ref, info.RepoDigests, d), ""
 }
 
 func shortErr(err error) string {

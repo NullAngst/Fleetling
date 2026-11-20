@@ -164,8 +164,9 @@ func (s *Server) runSelfHelper(ctx context.Context, st store.Settings, f compose
 }
 
 type selfUpdatingData struct {
-	Mode string
-	Boot string
+	Mode  string
+	Boot  string
+	Since string // when this page opened, to tell this run's log from the last one's
 }
 
 // selfUpdatingPage waits for the new process. Its script polls /healthz
@@ -175,7 +176,7 @@ func (s *Server) selfUpdatingPage(w http.ResponseWriter, r *http.Request) {
 	if mode != updater.ModeRestart {
 		mode = updater.ModeUpdate
 	}
-	s.render(w, http.StatusOK, "self_updating", s.page(r, "Updating Fleetling", "stacks", selfUpdatingData{Mode: mode, Boot: s.boot}))
+	s.render(w, http.StatusOK, "self_updating", s.page(r, "Updating Fleetling", "stacks", selfUpdatingData{Mode: mode, Boot: s.boot, Since: s.now().UTC().Format(time.RFC3339)}))
 }
 
 type lastUpdateData struct {

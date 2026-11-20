@@ -1,3 +1,20 @@
+2026.11.20 - Feature: versioning, Updates page, About page, self-update fixes
+
+* VERSION file at the top of the repository, starting at 1.0.0, built into every binary and image. Before this, an image built from git reported "dev"
+* Version numbering: each release bumps the middle number, 1.0.0 to 1.9.0, then 2.0.0. A test fails on a VERSION that breaks it, and fleetling version --next prints the next one
+* The release workflow refuses a tag that doesn't match VERSION (a leading v or V is fine), and no longer passes the version with -ldflags
+* New Updates page: Fleetling's running version against GitHub (VERSION on main, the newest release, the newest commit on main against the image's build time), with an Update Fleetling button that uses the existing helper and rollback. Every managed stack with its image check, schedule, last result and Update now, plus Update all. Containers outside managed stacks with an image check, read-only
+* The GitHub check runs at most every 6 hours, in the background and from the page, and can be turned off on the Updates page. Updates gets a "new" mark in the sidebar when main has a newer version
+* New About page: version and next release, Go and build settings, process, configuration, and per engine the host, OS, kernel, CPUs, memory, engine and Compose versions, storage and cgroups
+* The sidebar version links to About
+* Fix: Fleetling's own folder, not managed yet, showed "use Manage first" with no Manage button, so self-update couldn't be reached from the UI on a fresh install. It now has the button
+* Fix: the self-update waiting page kept waiting forever when the helper failed before changing anything. It now stops and says the running Fleetling was never touched
+* Engine: SystemInfo (from /info and /version), image build time in ImageInfo
+* The stack page's image check and the Updates page share one checker
+* The browser smoke test also loads Updates and About
+
+Reasons for changes: Self-update existed but was hard to find, and on a fresh install couldn't be reached at all because of the missing Manage button. There was no way to tell whether a newer Fleetling existed, and images built from git all said "dev", so there was nothing to compare against. A version file with a fixed numbering gives every build a real version, and the Updates page puts Fleetling and every stack's updates in one place.
+
 2026.11.19 - Feature: Portainer migration trial
 
 * Every Portainer import records what it wrote into each folder: a hash per file, and the compose file as written

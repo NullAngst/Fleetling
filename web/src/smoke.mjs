@@ -84,7 +84,7 @@ await step("manage", async () => {
   await Promise.all([page.waitForNavigation({ waitUntil: "networkidle0" }), page.click(`form[action="/stacks/${stack}/manage"] button`)]);
 });
 
-for (const path of ["/", "/containers", "/networks", "/networks/new", "/images", "/volumes", "/builds", "/convert", "/actions", "/import", "/settings", `/stacks/${stack}`, `/stacks/${stack}?tab=logs`]) {
+for (const path of ["/", "/containers", "/networks", "/networks/new", "/images", "/volumes", "/builds", "/convert", "/updates", "/about", "/actions", "/import", "/settings", `/stacks/${stack}`, `/stacks/${stack}?tab=logs`]) {
   await step(path, () => visit(path));
 }
 

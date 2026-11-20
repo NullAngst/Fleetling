@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	fleetling "github.com/NullAngst/Fleetling"
 	"github.com/NullAngst/Fleetling/internal/certs"
 	"github.com/NullAngst/Fleetling/internal/compose"
 	"github.com/NullAngst/Fleetling/internal/engine"
@@ -31,13 +32,24 @@ import (
 	"github.com/NullAngst/Fleetling/internal/updater"
 )
 
-// version is set at build time with -ldflags "-X main.version=v1.2.0".
-var version = "dev"
+// version comes from the VERSION file at the top of the repository.
+var version = fleetling.Version()
 
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "version":
+			// fleetling version --next prints the version the next release
+			// takes, by the numbering in version.go.
+			if len(os.Args) > 2 && os.Args[2] == "--next" {
+				v, err := fleetling.Parse(version)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+				fmt.Println(v.Next())
+				return
+			}
 			fmt.Println(version)
 			return
 		case "healthcheck":

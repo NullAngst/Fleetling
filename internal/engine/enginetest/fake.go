@@ -189,6 +189,19 @@ func (e *Engine) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/version":
 		j(map[string]any{"Version": "29.8.2", "ApiVersion": "1.53", "MinAPIVersion": "1.24", "Os": "linux", "Arch": "amd64",
 			"Components": []map[string]any{{"Name": "Engine", "Version": "29.8.2"}}})
+	case path == "/info":
+		e.mu.Lock()
+		n, running := len(e.containers), 0
+		for _, c := range e.containers {
+			if c.Running {
+				running++
+			}
+		}
+		e.mu.Unlock()
+		j(map[string]any{"Name": "fakehost", "ServerVersion": "29.8.2", "OperatingSystem": "Fake Linux 1.0", "KernelVersion": "6.12.0-fake",
+			"OSType": "linux", "Architecture": "x86_64", "NCPU": 8, "MemTotal": int64(16) << 30, "Driver": "overlayfs",
+			"CgroupDriver": "systemd", "CgroupVersion": "2", "DockerRootDir": "/var/lib/docker",
+			"Containers": n, "ContainersRunning": running, "Images": len(e.Images)})
 	case path == "/containers/json":
 		var out []map[string]any
 		e.mu.Lock()

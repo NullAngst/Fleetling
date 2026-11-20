@@ -1,0 +1,25 @@
+<div class="update-box{{if .Available}} is-new{{end}}">
+  <p><strong>Running v{{.Running}}</strong>{{if not .Built.IsZero}} <span class="muted">built {{.Built.UTC.Format "2006-01-02 15:04"}} UTC</span>{{end}}</p>
+  {{if .Problem}}<p class="warn">{{.Problem}}</p>{{end}}
+  {{if not .Enabled}}
+  <p class="muted">The GitHub check is off. New versions are listed at <a href="https://github.com/NullAngst/Fleetling/releases">the releases page</a>.</p>
+  {{else if .Checked}}
+    {{if .OnMain}}<p><span class="flag flag-bad">update available</span> v{{.Check.MainVersion}} is on <span class="mono">main</span>.</p>
+    {{else if .NewCommit}}<p><span class="flag flag-bad">update available</span> <span class="mono">main</span> has commits newer than this build, without a version change: usually the weekly dependency updates.</p>
+    {{else if .NewTag}}<p><span class="flag flag-bad">update available</span> Release {{.Check.Release}} is newer than this build.</p>
+    {{else if .Check.MainVersion}}<p><span class="state"><span class="dot dot-ok"></span>up to date</span></p>{{end}}
+    <p class="muted small">
+      {{if .Check.MainVersion}}On main: <span class="mono">v{{.Check.MainVersion}}</span>.{{end}}
+      {{if .Check.MainCommit}}Newest commit <a class="mono" href="{{.Check.MainURL}}">{{.Check.MainCommit}}</a> from {{.Check.MainDate.UTC.Format "2006-01-02 15:04"}} UTC.{{end}}
+      {{if .Check.Release}}Newest release: <a class="mono" href="{{.Check.ReleaseURL}}">{{.Check.Release}}</a>.{{else if .Check.ReleaseOK}}No releases yet.{{end}}
+      Checked {{.Check.Checked.UTC.Format "2006-01-02 15:04"}} UTC.
+    </p>
+    {{if .Check.Errs}}<p class="warn small">Could not read from GitHub: {{range $i, $e := .Check.Errs}}{{if $i}}; {{end}}{{$e}}{{end}}</p>{{end}}
+  {{end}}
+  {{if .Enabled}}
+  <form method="post" action="/updates/check" class="actions">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="link small">Check again now</button>
+  </form>
+  {{end}}
+</div>

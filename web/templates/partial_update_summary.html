@@ -1,0 +1,6 @@
+{{if .Problem}}<span class="warn small" title="{{.Problem}}">could not check</span>
+{{else if .Available}}<span class="flag flag-bad" title="{{join .Available ", "}}">{{len .Available}} update{{if ne (len .Available) 1}}s{{end}} available</span> <span class="muted small mono">{{join .Available ", "}}</span>
+{{else if .Unknown}}<span class="muted small" title="{{.Detail}}">{{if .Current}}{{.Current}} current, {{end}}{{.Unknown}} unknown</span>
+{{else if .Current}}<span class="state"><span class="dot dot-ok"></span>current</span>
+{{else if .Local}}<span class="muted small">built here, nothing to compare</span>
+{{else}}<span class="muted small">no images</span>{{end}}

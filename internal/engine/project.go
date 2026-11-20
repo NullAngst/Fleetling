@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strings"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
@@ -77,7 +78,8 @@ func (e *Client) ProjectContainers(ctx context.Context, project string) ([]Proje
 type ImageInfo struct {
 	ID          string
 	RepoTags    []string
-	RepoDigests []string // name@sha256:..., the registry digests this image was pulled as
+	RepoDigests []string  // name@sha256:..., the registry digests this image was pulled as
+	Created     time.Time // when the image was built
 }
 
 // ImageInfo inspects one image by reference or ID.
@@ -89,7 +91,53 @@ func (e *Client) ImageInfo(ctx context.Context, ref string) (ImageInfo, error) {
 	if err != nil {
 		return ImageInfo{}, err
 	}
-	return ImageInfo{ID: res.ID, RepoTags: res.RepoTags, RepoDigests: res.RepoDigests}, nil
+	info := ImageInfo{ID: res.ID, RepoTags: res.RepoTags, RepoDigests: res.RepoDigests}
+	info.Created, _ = time.Parse(time.RFC3339Nano, res.Created)
+	return info, nil
+}
+
+// SystemInfo is what the About page shows for one engine.
+type SystemInfo struct {
+	Name          string // the host's name, as the engine sees it
+	ServerVersion string
+	APIVersion    string
+	OS            string // "Ubuntu 24.04 LTS"
+	Kernel        string
+	Arch          string
+	CPUs          int
+	Memory        uint64 // bytes
+	StorageDriver string
+	CgroupDriver  string
+	CgroupVersion string
+	RootDir       string
+	Containers    int
+	Running       int
+	Images        int
+}
+
+// SystemInfo reads the engine's /info and /version.
+func (e *Client) SystemInfo(ctx context.Context) (SystemInfo, error) {
+	if err := e.checkSocket(); err != nil {
+		return SystemInfo{}, err
+	}
+	res, err := e.c.Info(ctx, client.InfoOptions{})
+	if err != nil {
+		return SystemInfo{}, err
+	}
+	in := res.Info
+	si := SystemInfo{
+		Name: in.Name, ServerVersion: in.ServerVersion, OS: in.OperatingSystem, Kernel: in.KernelVersion,
+		Arch: in.Architecture, CPUs: in.NCPU, Memory: uint64(max(in.MemTotal, 0)), StorageDriver: in.Driver,
+		CgroupDriver: in.CgroupDriver, CgroupVersion: in.CgroupVersion, RootDir: in.DockerRootDir,
+		Containers: in.Containers, Running: in.ContainersRunning, Images: in.Images,
+	}
+	if v, err := e.c.ServerVersion(ctx, client.ServerVersionOptions{}); err == nil {
+		si.APIVersion = v.APIVersion
+		if si.ServerVersion == "" {
+			si.ServerVersion = v.Version
+		}
+	}
+	return si, nil
 }
 
 // Exists reports whether a container with this name or ID exists, running
