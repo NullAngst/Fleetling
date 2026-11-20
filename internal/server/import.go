@@ -90,6 +90,7 @@ type portainerBox struct {
 	ID      string
 	Image   string
 	Command string
+	Running bool
 	Err     string
 }
 
@@ -107,7 +108,7 @@ func (s *Server) findPortainer(ctx context.Context) portainerBox {
 	for _, r := range rows {
 		img := strings.ToLower(r.Image)
 		if strings.Contains(img, "portainer/portainer") && !strings.Contains(img, "agent") {
-			return portainerBox{Name: r.Name, ID: r.ID, Image: r.Image, Command: cliLine("remove", r.Name)}
+			return portainerBox{Name: r.Name, ID: r.ID, Image: r.Image, Command: cliLine("remove", r.Name), Running: r.State == "running"}
 		}
 	}
 	return portainerBox{}
@@ -117,6 +118,7 @@ type importLanding struct {
 	Portainer portainerBox
 	DataPath  string
 	Root      string
+	Trial     *portainerTrial
 }
 
 func (s *Server) importPage(w http.ResponseWriter, r *http.Request) {
@@ -126,12 +128,14 @@ func (s *Server) importPage(w http.ResponseWriter, r *http.Request) {
 	}
 	st, _ := s.store.LoadSettings(r.Context(), s.cfg.DefaultRoot)
 	d := importLanding{Portainer: s.findPortainer(r.Context()), DataPath: filepath.Join(st.Root, "portainer"), Root: st.Root}
+	d.Trial, _ = s.loadTrial(r.Context())
 	s.render(w, http.StatusOK, "import", s.page(r, "Import from Portainer", "import", d))
 }
 
 func (s *Server) importFail(w http.ResponseWriter, r *http.Request, status int, msg string) {
 	st, _ := s.store.LoadSettings(r.Context(), s.cfg.DefaultRoot)
 	d := importLanding{Portainer: s.findPortainer(r.Context()), DataPath: r.PostFormValue("data_path"), Root: st.Root}
+	d.Trial, _ = s.loadTrial(r.Context())
 	if d.DataPath == "" {
 		d.DataPath = filepath.Join(st.Root, "portainer")
 	}
@@ -507,9 +511,15 @@ func (s *Server) importApply(w http.ResponseWriter, r *http.Request) {
 	var results []importResult
 	for _, j := range jobs {
 		dir := filepath.Join(st.Root, j.folder)
+		_, statErr := os.Stat(dir)
+		newFolder := errors.Is(statErr, os.ErrNotExist)
 		wrote, err := s.writeImport(dir, j.c, j.text, j.env)
 		if err == nil {
 			err = s.recordWrites(ctx, dir, "import", wrote)
+		}
+		if err == nil {
+			// So the move can be undone: see trial.go.
+			err = s.trialAdd(ctx, j.folder, j.c.Name, newFolder, wrote)
 		}
 		what := "fleetling: import Portainer stack " + j.c.Name + " into " + dir
 		if j.applied {
@@ -552,7 +562,7 @@ func (s *Server) importApply(w http.ResponseWriter, r *http.Request) {
 	}
 	p := s.page(r, "Import finished", "import", map[string]any{"Results": results, "Portainer": s.findPortainer(ctx)})
 	if mismatch {
-		p.Error = "some stacks did not line up with their containers. Stop here and check them before retiring Portainer"
+		p.Error = "some stacks did not line up with their containers. Stop here and check them before stopping Portainer"
 	}
 	s.render(w, http.StatusOK, "import_done", p)
 }
@@ -613,32 +623,4 @@ func (s *Server) writeImport(dir string, c *importCandidate, text string, env []
 	}
 	wrote[compose.MetaFile] = b
 	return wrote, nil
-}
-
-// importRetire stops and removes the Portainer container, and nothing else.
-// Its data folder and named volume stay.
-func (s *Server) importRetire(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	pb := s.findPortainer(ctx)
-	if pb.ID == "" {
-		http.Error(w, "no Portainer container found", http.StatusNotFound)
-		return
-	}
-	if s.isSelfContainer(pb.ID) {
-		http.Error(w, "refusing to remove Fleetling's own container", http.StatusConflict)
-		return
-	}
-	e, _, err := s.engineFor(ctx, compose.EngineDocker)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer e.Close()
-	err = e.Remove(ctx, pb.ID)
-	s.logFileAction(ctx, "container/"+pb.Name, compose.EngineDocker, pb.Command, err)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadGateway)
-		return
-	}
-	http.Redirect(w, r, "/?retired=1", http.StatusSeeOther)
 }

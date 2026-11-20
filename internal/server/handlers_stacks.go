@@ -15,6 +15,7 @@ type stacksData struct {
 	OnDisk   int
 	External int
 	Counts   []labelCount // one per status present, for the filter chips
+	Trial    *portainerTrial
 }
 
 type labelCount struct {
@@ -99,5 +100,10 @@ func (s *Server) stacksPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	d.Counts = countLabels(d.Stacks)
-	s.render(w, http.StatusOK, "stacks", s.page(r, "Stacks", "stacks", d))
+	d.Trial, _ = s.loadTrial(ctx)
+	p := s.page(r, "Stacks", "stacks", d)
+	if r.URL.Query().Get("notice") == "migrated" {
+		p.Notice = "Migration finished. Portainer's container is removed; its data folder or volume is still there."
+	}
+	s.render(w, http.StatusOK, "stacks", p)
 }

@@ -124,12 +124,13 @@ func TestImportFromAPI(t *testing.T) {
 		t.Error("import session (with credentials) kept after applying")
 	}
 
-	// Retire removes the Portainer container and nothing else.
+	// Retire stops the Portainer container for the trial, after turning
+	// its restart policy off, and touches nothing else.
 	w = b.do("POST", "/import/retire", url.Values{"csrf": {b.token("/import")}}, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("retire: %d %s", w.Code, w.Body.String())
 	}
-	if calls := strings.Join(fe.Calls(), ","); calls != "DELETE remove portainer" {
+	if calls := strings.Join(fe.Calls(), ","); calls != "POST update portainer restart=no,POST stop portainer" {
 		t.Errorf("retire calls %s", calls)
 	}
 }

@@ -16,6 +16,7 @@
 {{end}}
 </div>
 {{if $d.ScanErr}}<div class="msg msg-error">Could not read the stack root: <span class="mono">{{$d.ScanErr}}</span></div>{{end}}
+{{with $d.Trial}}<p class="notice-line">Portainer migration on trial: {{len .Stacks}} imported stack{{if ne (len .Stacks) 1}}s{{end}}, Portainer {{if .Stopped}}stopped, not removed{{else}}still running{{end}}. <a href="/import/trial">Go back to Portainer or finish the migration</a></p>{{end}}
 
 <div class="filter-bar">
   <div class="chips" role="group" aria-label="Filter by status">

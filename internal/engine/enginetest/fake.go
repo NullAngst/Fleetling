@@ -38,6 +38,7 @@ type Container struct {
 	Volumes  []string // named volumes mounted
 	Networks []string // networks attached
 	Health   string   // reported by inspect when set: healthy, unhealthy, starting
+	Restart  string   // restart policy, reported by inspect and set by update
 }
 
 // Network is a fake network.
@@ -367,8 +368,19 @@ func (e *Engine) container(w http.ResponseWriter, r *http.Request, c *Container,
 			state["Health"] = map[string]any{"Status": c.Health}
 		}
 		j(map[string]any{"Id": c.ID, "Name": "/" + c.Name, "Image": image,
-			"State":  state,
-			"Config": map[string]any{"Image": c.Image, "Tty": c.Tty, "Labels": c.Labels, "Env": c.Env}, "Mounts": mounts})
+			"State":      state,
+			"HostConfig": map[string]any{"RestartPolicy": map[string]any{"Name": c.Restart, "MaximumRetryCount": 0}},
+			"Config":     map[string]any{"Image": c.Image, "Tty": c.Tty, "Labels": c.Labels, "Env": c.Env}, "Mounts": mounts})
+	case "update":
+		var body struct {
+			RestartPolicy struct{ Name string }
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		e.mu.Lock()
+		e.calls = append(e.calls, r.Method+" update "+c.Name+" restart="+body.RestartPolicy.Name)
+		c.Restart = body.RestartPolicy.Name
+		e.mu.Unlock()
+		j(map[string]any{"Warnings": []string{}})
 	case "start", "stop", "restart", "kill":
 		e.record(r, c, what)
 		e.mu.Lock()

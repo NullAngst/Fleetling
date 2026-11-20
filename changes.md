@@ -1,3 +1,16 @@
+2026.11.19 - Feature: Portainer migration trial
+
+* Every Portainer import records what it wrote into each folder: a hash per file, and the compose file as written
+* Retire is now Stop Portainer: it turns the container's restart policy off and stops it, and removes nothing. The old policy is recorded
+* New trial page (Import, or the banner on the Stacks page) showing, per imported stack, what going back removes and what it keeps, with a compose diff for stacks changed after the import
+* Go back to Portainer: restores Portainer's restart policy, starts it, and removes .fleetling.toml plus every file still exactly as the import wrote it. Changed files and app data stay; a folder the import created goes only when empty. The approved snapshot and update schedule of each stack go too. No stack container is touched
+* Finish migration removes Portainer's container, what Retire did before. Its data stays
+* Going back is refused while an action runs on an imported stack, or when Portainer's container is gone
+* Engine: restart policy read on inspect and set with docker update --restart; the test fake supports both
+* The trial is a setting, not a new table, so no schema change
+
+Reasons for changes: Retire removed Portainer on the spot, so trying Fleetling meant committing to it. Stopping Portainer and keeping a record of what the import wrote makes the move reversible, with nothing lost either way: no edits made in Fleetling and no app data. The restart policy has to be turned off during the trial, since Docker starts a container with --restart=always again on reboot even after a manual stop.
+
 2026.11.18 - Security patches: drift review, logins, sessions and CI tokens
 
 * Fleetling's own writes (save, create, import, convert, the first deploy's path tracking, moving engines) record only the files it wrote, from the bytes it wrote; every other file keeps its approved state instead of being re-read from disk and approved with them

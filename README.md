@@ -20,7 +20,7 @@ Every phase of the build plan is built. What works:
 - Networks: list with subnets and attached containers, create with bridge, macvlan, ipvlan or any other driver, connect and disconnect with a static IP and aliases, remove.
 - Images: list with size and the containers using each, pull with live output, remove, and prune with a preview.
 - Volumes: list with the containers using each, remove, and prune with a preview.
-- The Portainer importer, through Portainer's API or straight from its data folder, plus a button to retire Portainer afterwards.
+- The Portainer importer, through Portainer's API or straight from its data folder, plus a trial: Portainer is stopped, not removed, until you either go back to it or finish the migration.
 - The action log: every command Fleetling ran, every file it wrote and every shell opened, kept for 90 days.
 - Self-management: Update and Restart on Fleetling's own stack, run by a helper container that rolls back to the old image if the new one doesn't come up healthy.
 - Podman: the create form suggests the engine from the compose file and says which line made it think so, stacks move between engines, and the endpoint test checks `podman-restart.service`.
@@ -146,9 +146,27 @@ Open Import in the sidebar. Nothing is redeployed: the importer writes files, an
 5. Approve the relative-path rewrites, if any are listed. Portainer resolved `./data` against its own folder, so the running container really uses something like `/opt/portainer/compose/3/data`. The preview shows that diff, and the rewrite keeps the stack pointed at the same data once it moves.
 6. Write. Each stack gets `compose.yaml` exactly as Portainer returned it, `.env` from Portainer's env vars at mode 600, and `.fleetling.toml`. If the compose file reads Portainer's `stack.env`, the vars go there and `.env` becomes a symlink to it, since Compose only reads `.env` for `${VARIABLE}` interpolation.
 7. Check the result page. Every imported stack should show Running with no deploy. One that says the project name didn't match means its containers are still External: stop and look before going further.
-8. Retire Portainer from the same page. It stops and removes the Portainer container only. Its data stays, so you can bring it back.
+8. Stop Portainer from the same page. That starts the trial, below. Nothing is removed yet.
 
 DO NOT REMOVE STACKS INSIDE PORTAINER TO CLEAN UP. That runs `docker compose down` and deletes their containers, which are now Fleetling's.
+
+### Trying it before you commit
+
+Moving off Portainer doesn't have to be one-way. Every import records what it wrote into each folder, and Stop Portainer stops Portainer's container without removing it. It also turns the container's restart policy off for the trial. Why? Because Portainer is usually run with `--restart=always`, and Docker starts an `always` container again on the next reboot even after you stopped it by hand. The policy it had is recorded, and put back if you go back.
+
+While the trial runs, the Stacks page says so and links to the trial page. That page lists, per imported stack, exactly what going back removes and what it keeps. From there:
+
+- Go back to Portainer. Puts Portainer's restart policy back, starts it, and hands every imported stack back. `.fleetling.toml` is removed, and so is each file that is still exactly as the import wrote it. A file you changed in Fleetling stays where it is, and the page shows the compose diff, so no edit is lost. App data in the folders stays. A folder the import created is removed only if nothing else ended up in it. No container is touched: Portainer finds them by project name, the same way Fleetling did. The stacks show as External in Fleetling afterwards, and you can import them again any time.
+- Finish migration. Removes Portainer's container, which is what Retire used to do. Its data folder or volume stays.
+
+There's no time limit. Stacks you import later join the same trial.
+
+Two things to know before going back:
+
+- Portainer kept its own copy of each compose file and its env vars from before the import, and it never reads the ones in the stack folders. If you changed a stack in Fleetling and redeployed it, the containers keep running your version until you update that stack in Portainer, which puts Portainer's version back. Copy your changes into Portainer's editor first.
+- Going back needs Portainer's container. If it's gone, the button is greyed out and nothing is handed back until you bring Portainer back from its data folder.
+
+Stacks imported with a Fleetling older than this feature aren't recorded, so going back leaves them managed here. To hand one back by hand, delete its `.fleetling.toml`.
 
 ### Offline import
 

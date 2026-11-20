@@ -99,6 +99,7 @@ Every couple of months, skim the release notes of the things Fleetling leans on 
 1. Open Fleetling's Stacks page.
 2. Look for red "changed outside Fleetling, review" flags. Open each and read the diff. If you didn't make the change, don't approve it; find out what did.
 3. Look for "auto-update failed" and "auto-update skipped". Open the stack's Updates tab for the reason.
+3.5. If the Portainer migration banner is still at the top, decide. The trial costs nothing to leave open, but Portainer's image doesn't get updates while it sits stopped. Open the trial page and either go back or click Finish migration.
 4. Open Action log and scan the Exit column for red entries since last month.
 
 ## 7. TLS

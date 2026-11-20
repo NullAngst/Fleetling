@@ -1,5 +1,6 @@
 {{define "content"}}
 <h1>Import from Portainer</h1>
+{{with .Data.Trial}}<p class="notice-line">A migration is on trial: {{len .Stacks}} imported stack{{if ne (len .Stacks) 1}}s{{end}} since {{.Started.Format "2006-01-02"}}. Stacks imported now join it. <a href="/import/trial">Go back to Portainer or finish the migration</a></p>{{end}}
 <p>Reads each compose stack out of Portainer and writes it to a folder under <span class="mono">{{.Data.Root}}</span>. Nothing is redeployed: the running containers are picked up by project name, which stays exactly the Portainer stack name. You get a preview before anything is written.</p>
 
 <form method="post" action="/import/connect" class="form wide">

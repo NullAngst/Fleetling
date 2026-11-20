@@ -1,0 +1,70 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Portainer trial</h1>
+<p>Started {{$d.Trial.Started.Format "2006-01-02 15:04"}} UTC.
+{{if eq $d.State "stopped"}}Portainer's container <span class="mono">{{$d.Portainer.Name}}</span> is stopped{{if $d.Trial.Stopped}} with its restart policy off{{end}}, not removed.
+{{else if eq $d.State "running"}}Portainer's container <span class="mono">{{$d.Portainer.Name}}</span> is still running. Stop it from the <a href="/import">Import page</a> to try Fleetling on its own.
+{{else if eq $d.State "gone"}}<span class="warn">Portainer's container{{with $d.Trial.Name}} <span class="mono">{{.}}</span>{{end}} is gone.</span> Going back needs it; recreate it from its data folder first.
+{{else}}<span class="warn">Could not reach Docker: {{$d.Portainer.Err}}</span>{{end}}</p>
+
+<h2>What going back does</h2>
+{{if $d.Plans}}
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Folder</th><th>Project</th><th>Removed</th><th>Kept</th><th>Running now</th></tr></thead>
+  <tbody>
+  {{range $d.Plans}}
+    <tr>
+      <td data-label="Folder" class="mono">{{if .Gone}}{{.Folder}} <span class="muted">removed in Fleetling</span>{{else}}<a href="/stacks/{{.Folder}}">{{.Folder}}</a>{{end}}{{if .Busy}}<div class="warn">an action is running</div>{{end}}</td>
+      <td data-label="Project" class="mono">{{.Project}}</td>
+      <td data-label="Removed" class="mono">{{range $i, $f := .Remove}}{{if $i}}, {{end}}{{$f}}{{else}}<span class="muted">nothing</span>{{end}}</td>
+      <td data-label="Kept" class="mono">{{range $i, $f := .Keep}}{{if $i}}, {{end}}<span class="warn">{{$f}}</span>{{else}}<span class="muted">nothing</span>{{end}}</td>
+      <td data-label="Running" class="mono">{{.Running}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted">The containers are not touched. Portainer picks them up by project name, the same way Fleetling did. Files are removed only when they are still exactly as the import wrote them, plus <span class="mono">.fleetling.toml</span>, which is Fleetling's own. App data in the folders stays.</p>
+{{if $d.Changed}}
+<p class="notice-line">{{$d.Changed}} stack{{if ne $d.Changed 1}}s{{end}} changed in Fleetling after the import. Portainer still holds its own copy of each compose file and env vars, from before the import, and doesn't read the ones in these folders. If you redeployed from Fleetling, the containers run the changed version until you update the stack in Portainer, which puts Portainer's version back. Copy what you want to keep into Portainer's editor, then delete the kept files.</p>
+{{range $d.Plans}}{{if .Diff}}
+<h3 class="mono">{{.Folder}}/compose.yaml <span class="muted">as imported, then as it is now</span></h3>
+{{template "diff" .Diff}}
+{{end}}{{end}}
+{{end}}
+{{else}}
+<p class="muted">No imported stacks are recorded. Stacks imported before this version of Fleetling aren't tracked; going back leaves them managed here. To hand one back by hand, delete its <span class="mono">.fleetling.toml</span>.</p>
+{{end}}
+
+<div class="actions">
+  <form method="post" action="/import/trial/revert">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" {{if or $d.Busy (eq $d.State "gone") (eq $d.State "")}}disabled{{end}}
+      data-command="{{if $d.Trial.Stopped}}docker update --restart {{or $d.Trial.Restart "no"}} {{$d.Portainer.Name}} &amp;&amp; docker start {{$d.Portainer.Name}}, then {{end}}remove Fleetling's files from {{len $d.Plans}} folder{{if ne (len $d.Plans) 1}}s{{end}} as listed (no containers touched)"
+      data-title="Go back to Portainer?">Go back to Portainer</button>
+  </form>
+  <form method="post" action="/import/trial/finish">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" {{if eq $d.State ""}}disabled{{end}}
+      data-command="{{if ne $d.State "gone"}}{{$d.Portainer.Command}}{{else}}forget the trial (Portainer's container is already gone){{end}}"
+      data-title="Finish the migration and remove Portainer's container?" data-danger>Finish migration</button>
+  </form>
+</div>
+<p class="muted">Finish migration removes Portainer's container only. Its data folder or volume stays, so it could still be brought back by hand later.</p>
+{{end}}
+
+{{define "diff"}}
+<div class="table-wrap">
+<table class="diff mono">
+  <tbody>
+  {{range .}}
+  <tr class="d-{{.Kind}}">
+    <td class="ln">{{if .LeftNo}}{{.LeftNo}}{{end}}</td><td class="l">{{.Left}}</td>
+    <td class="ln">{{if .RightNo}}{{.RightNo}}{{end}}</td><td class="r">{{.Right}}</td>
+  </tr>
+  {{else}}<tr><td class="muted">Empty.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{end}}

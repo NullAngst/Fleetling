@@ -1,0 +1,19 @@
+{{define "content"}}
+{{$d := .Data}}
+<h1>Back to Portainer</h1>
+<p>Portainer{{with $d.Portainer.Name}} (<span class="mono">{{.}}</span>){{end}} is running again with its restart policy as it was. Give it a few seconds, then open it: every stack below should show up there with its containers.</p>
+<div class="table-wrap">
+<table class="list">
+  <thead><tr><th>Folder</th><th>Result</th></tr></thead>
+  <tbody>
+  {{range $d.Outcomes}}
+    <tr>
+      <td data-label="Folder" class="mono">{{.Folder}}</td>
+      <td data-label="Result">{{.Did}}{{if .Err}}<div class="warn">{{.Err}}</div>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="2" class="muted">No imported stacks were recorded.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+<p class="muted">Those folders now show as External on the Stacks page, the way Portainer's stacks did before the import. Import them again any time.</p>
+{{end}}

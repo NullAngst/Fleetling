@@ -51,6 +51,7 @@ type Engine interface {
 	Restart(ctx context.Context, id string) error
 	Kill(ctx context.Context, id string) error
 	Remove(ctx context.Context, id string) error
+	SetRestartPolicy(ctx context.Context, id, name string, max int) error
 	Logs(ctx context.Context, id string, tty bool, o engine.LogOptions, emit func(stderr bool, line string)) error
 	Stats(ctx context.Context, id string) (engine.Stats, error)
 	Shell(ctx context.Context, id string, cmd []string, user string, cols, rows uint) (*engine.Exec, error)
@@ -107,6 +108,8 @@ type Server struct {
 	revoked    map[string]time.Time // logged-out session IDs (hex) until they'd expire anyway
 
 	socks socketSet // live websockets, closed when their session ends
+
+	trialMu sync.Mutex // the Portainer trial record; see trial.go
 }
 
 var errNotInContainer = errors.New("not running in a container")
@@ -274,6 +277,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /import/apply", s.requireAuth(s.importApply))
 	mux.HandleFunc("POST /import/reset", s.requireAuth(s.importReset))
 	mux.HandleFunc("POST /import/retire", s.requireAuth(s.importRetire))
+	mux.HandleFunc("GET /import/trial", s.requireAuth(s.trialPage))
+	mux.HandleFunc("POST /import/trial/revert", s.requireAuth(s.trialRevert))
+	mux.HandleFunc("POST /import/trial/finish", s.requireAuth(s.trialFinish))
 	mux.HandleFunc("GET /networks", s.requireAuth(s.networksPage))
 	mux.HandleFunc("GET /networks/new", s.requireAuth(s.networkForm))
 	mux.HandleFunc("POST /networks/new", s.requireAuth(s.networkCreate))

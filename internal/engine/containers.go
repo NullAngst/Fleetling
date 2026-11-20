@@ -110,7 +110,10 @@ type Detail struct {
 	ExitCode  int
 	Mounts    []compose.Mount
 	Env       []string // Config.Env, KEY=value
-	Raw       string   // indented JSON for the Inspect tab
+	Restart   string   // restart policy: no, always, unless-stopped, on-failure
+	// RestartMax is on-failure's retry limit, 0 for no limit.
+	RestartMax int
+	Raw        string // indented JSON for the Inspect tab
 }
 
 // Inspect reads one container.
@@ -129,6 +132,9 @@ func (e *Client) Inspect(ctx context.Context, id string) (Detail, error) {
 		d.Tty = c.Config.Tty
 		d.Project, d.Service, d.WorkDir = c.Config.Labels[LabelProject], c.Config.Labels[LabelService], c.Config.Labels[LabelWorkingDir]
 		d.Env = c.Config.Env
+	}
+	if c.HostConfig != nil {
+		d.Restart, d.RestartMax = string(c.HostConfig.RestartPolicy.Name), c.HostConfig.RestartPolicy.MaximumRetryCount
 	}
 	for _, m := range c.Mounts {
 		d.Mounts = append(d.Mounts, compose.Mount{Type: string(m.Type), Name: m.Name, Source: m.Source, Destination: m.Destination})
@@ -187,6 +193,18 @@ func (e *Client) Kill(ctx context.Context, id string) error {
 
 // Remove force-removes a container, stopping it first if it runs. Named
 // volumes stay; bind mounts on disk are never touched here.
+// SetRestartPolicy changes a container's restart policy in place, the
+// way `docker update --restart` does. name is no, always,
+// unless-stopped or on-failure; max is on-failure's retry limit.
+func (e *Client) SetRestartPolicy(ctx context.Context, id, name string, max int) error {
+	if name == "" {
+		name = string(container.RestartPolicyDisabled)
+	}
+	rp := container.RestartPolicy{Name: container.RestartPolicyMode(name), MaximumRetryCount: max}
+	_, err := e.c.ContainerUpdate(ctx, id, client.ContainerUpdateOptions{RestartPolicy: &rp})
+	return err
+}
+
 func (e *Client) Remove(ctx context.Context, id string) error {
 	_, err := e.c.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: true})
 	return err
